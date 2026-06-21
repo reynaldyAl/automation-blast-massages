@@ -15,9 +15,11 @@ Persyaratan:
 - HP tidak dalam keadaan terkunci layar
 """
 
+import os
 import subprocess
 import time
 import shutil
+from pathlib import Path
 from typing import Optional
 
 from config import config
@@ -28,6 +30,39 @@ class ADBError(Exception):
     pass
 
 
+def _find_adb() -> Optional[str]:
+    """
+    Cari executable ADB di sistem.
+    Mendukung: PATH biasa + lokasi instalasi winget di Windows.
+    """
+    # Cari di PATH dulu (cara standar)
+    adb = shutil.which("adb")
+    if adb:
+        return adb
+
+    # Fallback: lokasi instalasi winget di Windows
+    if os.name == "nt":  # Windows only
+        localappdata = os.environ.get("LOCALAPPDATA", "")
+        winget_paths = [
+            Path(localappdata) / "Microsoft" / "WinGet" / "Links" / "adb.exe",
+            Path(localappdata) / "Microsoft" / "WinGet" / "Packages",
+        ]
+
+        # Cek link langsung
+        if winget_paths[0].exists():
+            return str(winget_paths[0])
+
+        # Cari di dalam subfolder Packages (nama folder bervariasi)
+        packages_dir = winget_paths[1]
+        if packages_dir.exists():
+            for pkg_dir in packages_dir.glob("Google.PlatformTools*"):
+                adb_exe = pkg_dir / "platform-tools" / "adb.exe"
+                if adb_exe.exists():
+                    return str(adb_exe)
+
+    return None
+
+
 class SMSSender:
     """Mengelola pengiriman SMS via Android Debug Bridge (ADB)."""
 
@@ -35,10 +70,14 @@ class SMSSender:
         self.dry_run = dry_run
         self._device_id = config.ADB_DEVICE_ID.strip() or None
         self._adb_available: Optional[bool] = None
+        self._adb_path: Optional[str] = _find_adb()  # Resolve ADB path sekali saja
 
     def _adb(self, *args: str, timeout: int = 15) -> subprocess.CompletedProcess:
         """Jalankan perintah ADB."""
-        cmd = ["adb"]
+        if not self._adb_path:
+            raise FileNotFoundError("ADB tidak ditemukan")
+
+        cmd = [self._adb_path]
         if self._device_id:
             cmd += ["-s", self._device_id]
         cmd += list(args)
@@ -63,8 +102,12 @@ class SMSSender:
         if self.dry_run:
             return True, "dry-run"
 
-        if not shutil.which("adb"):
-            return False, "ADB tidak terinstall. Install Android SDK Platform Tools."
+        if not self._adb_path:
+            return False, (
+                "ADB tidak terinstall. Install Android SDK Platform Tools.\n"
+                "  Windows: winget install Google.PlatformTools\n"
+                "  Atau buka terminal BARU setelah install agar PATH terupdate."
+            )
 
         result = self._adb("devices")
         if result.returncode != 0:
@@ -101,6 +144,40 @@ class SMSSender:
             self._adb("shell", "input", "keyevent", "KEYCODE_WAKEUP")
             time.sleep(0.5)
 
+    def _find_send_coords_dynamically(self) -> Optional[tuple[int, int]]:
+        """Mencari koordinat tombol Send di layar menggunakan uiautomator."""
+        try:
+            # Beri waktu sebentar agar keyboard atau UI stabil
+            time.sleep(1.0)
+            # Dump UI XML ke sdcard
+            self._adb("shell", "uiautomator", "dump", "/sdcard/window_dump.xml")
+            result = self._adb("shell", "cat", "/sdcard/window_dump.xml")
+            xml_str = result.stdout
+            
+            import re
+            # Cari tombol Send berdasarkan resource-id yang mengandung 'send' dan 'button'
+            match = re.search(r'resource-id="[^"]*send[^"]*button".*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml_str, re.IGNORECASE)
+            
+            # Jika tidak ketemu, cari berdasarkan content-desc (bahasa Inggris/Indonesia)
+            if not match:
+                match = re.search(r'content-desc="[^"]*(Send|Kirim)[^"]*".*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml_str, re.IGNORECASE)
+                
+            if match:
+                groups = match.groups()
+                # Jika group pertama adalah teks "Send" atau "Kirim" dari regex kedua
+                if len(groups) == 5:
+                    x1, y1, x2, y2 = map(int, groups[1:])
+                else:
+                    x1, y1, x2, y2 = map(int, groups)
+                    
+                center_x = (x1 + x2) // 2
+                center_y = (y1 + y2) // 2
+                return center_x, center_y
+        except Exception:
+            pass
+            
+        return None
+
     def send(self, phone_display: str, message: str) -> tuple[str, str]:
         """
         Kirim SMS ke nomor tujuan via ADB.
@@ -124,10 +201,11 @@ class SMSSender:
             # Bangunkan layar HP terlebih dahulu
             self.wake_screen()
 
-            # Escape karakter khusus untuk shell Android
-            # ADB shell am start tidak mendukung newline langsung di --es
-            # Ganti newline dengan spasi untuk kompatibilitas SMS
-            safe_msg = message.replace("\n", " ").replace('"', '\\"').replace("'", "\\'")
+            # Escape pesan agar aman dieksekusi oleh shell Android (/system/bin/sh).
+            # Dengan membungkus pesan dalam single quote ('), shell tidak akan menganggap
+            # tanda kurung '()' atau spesial karakter lainnya sebagai syntax command.
+            # Jika ada single quote di dalam pesan, escape menjadi '\''
+            safe_msg = "'" + message.replace("'", "'\\''") + "'"
 
             # Buka SMS composer dengan nomor & pesan terisi
             result = self._adb(
@@ -145,9 +223,28 @@ class SMSSender:
             time.sleep(config.ADB_SEND_WAIT)
 
             # Tap tombol Send SMS
-            # Koordinat tombol Send bervariasi per HP, gunakan input keyevent
-            # KEYCODE_ENTER = 66 (pada banyak SMS app, ini sama dengan Send)
-            self._adb("shell", "input", "keyevent", "66")
+            if config.SMS_SEND_COORDS:
+                # Manual koordinat dari .env (paling cepat jika sudah diset)
+                try:
+                    x, y = [p.strip() for p in config.SMS_SEND_COORDS.split(",")]
+                    self._adb("shell", "input", "tap", x, y)
+                except Exception:
+                    self._adb("shell", "input", "keyevent", "22")
+                    time.sleep(0.2)
+                    self._adb("shell", "input", "keyevent", "66")
+            else:
+                # Deteksi otomatis letak tombol Send di layar (hanya dihitung sekali per sesion)
+                if not getattr(self, '_cached_send_coords', None):
+                    self._cached_send_coords = self._find_send_coords_dynamically()
+                    
+                if self._cached_send_coords:
+                    cx, cy = self._cached_send_coords
+                    self._adb("shell", "input", "tap", str(cx), str(cy))
+                else:
+                    # Fallback terakhir jika uiautomator gagal
+                    self._adb("shell", "input", "keyevent", "22")
+                    time.sleep(0.2)
+                    self._adb("shell", "input", "keyevent", "66")
 
             # Tunggu sebentar setelah send
             time.sleep(1.0)
