@@ -1,165 +1,88 @@
 # 📋 Panduan Setup — BPJS Blast Message Automation
 
-Ada dua cara menjalankan project ini. Pilih salah satu:
-
-| | 🐳 Dengan Docker | 🐍 Tanpa Docker (Python Langsung) |
-|---|---|---|
-| **Prasyarat** | Docker Desktop saja | Python 3.10+, ADB |
-| **Setup awal** | Lebih mudah | Perlu install manual |
-| **Rekomendasi** | ✅ Disarankan | Untuk development |
+Sistem ini didesain agar sangat mudah diinstal dan dijalankan murni menggunakan OS Windows Anda secara lokal (tanpa Docker/VM).
 
 ---
 
-## 🐳 OPSI A — Dengan Docker (Direkomendasikan)
+## 🚀 Instalasi Super Cepat (Direkomendasikan)
 
-### Prasyarat
+Jika Anda menggunakan Windows, seluruh proses instalasi bisa dilakukan dengan **1 kali klik**:
 
-| Kebutuhan | Link |
-|---|---|
-| 🐳 **Docker Desktop** | [Download](https://www.docker.com/products/docker-desktop/) |
+1. Pastikan Anda sudah menginstall [Python 3.10+](https://www.python.org/downloads/) dan **mencentang "Add Python to PATH"** saat instalasi.
+2. Buka folder project ini.
+3. Klik ganda (jalankan) file **`setup.bat`**.
 
-> Tidak perlu install Python, pip, playwright, atau ADB secara manual —
-> semuanya sudah dibundel di dalam Docker image.
-
-### A1. Pastikan Docker Desktop Berjalan
-
-Sebelum menjalankan perintah Docker apapun, **buka Docker Desktop** dan tunggu sampai statusnya **"Docker Desktop is running"** (icon whale di system tray).
-
-> ⚠️ Error `failed to connect to docker API` artinya Docker Desktop belum dibuka.
-
-### A2. Clone & Konfigurasi
-
-```bash
-git clone <repo-url>
-cd automation-blast-massages
-
-# Salin file konfigurasi
-copy .env.example .env    # Windows
-cp .env.example .env      # Linux/Mac
-```
-
-Edit `.env` sesuai kebutuhan (buka dengan teks editor biasa).
-
-### A3. Build Image (Sekali Saja)
-
-```bash
-docker-compose build
-```
-
-> Build ulang hanya diperlukan jika ada perubahan kode atau `requirements.txt`.
-
-### A4. Validasi Setup
-
-```bash
-docker-compose run --rm blast validate
-```
-
-### A5. Scan QR WhatsApp (Pertama Kali)
-
-```bash
-# Buka browser untuk scan QR
-docker-compose run --rm blast run --dry-run
-```
-
-1. Browser Chromium terbuka otomatis
-2. Di HP: **WhatsApp → Titik Tiga → Perangkat Tertaut → Tautkan Perangkat**
-3. Scan QR code di browser
-4. ✅ Sesi tersimpan di `wa_profile/` — tidak perlu scan ulang
-
-### A6. Jalankan
-
-```bash
-docker-compose run --rm blast run
-```
+Script `setup.bat` akan secara otomatis:
+- Membuat Virtual Environment Python (`venv`)
+- Mendownload dan menginstall semua *library* (Jinja2, Pandas, dll)
+- Mendownload dan menginstall Playwright beserta browser Chromium (untuk WhatsApp)
+- Mendownload dan mengkonfigurasi Android Debug Bridge / ADB (untuk SMS)
 
 ---
 
-## 🐍 OPSI B — Tanpa Docker (Python Langsung)
+## 🛠 Instalasi Manual (Jika setup.bat gagal)
 
-### Prasyarat
+Jika Anda ingin melakukan instalasi tahap demi tahap:
 
-| Kebutuhan | Link / Cara Install |
-|---|---|
-| **Python 3.10+** | [Download](https://www.python.org/downloads/) |
-| **ADB** (untuk SMS) | Lihat langkah B3 |
-
-### B1. Clone & Virtual Environment
-
-```bash
-git clone <repo-url>
-cd automation-blast-massages
-
-# Buat & aktifkan virtual environment
+### 1. Buat & Aktifkan Virtual Environment
+Buka PowerShell/Terminal di folder project:
+```powershell
 python -m venv venv
-
-# Windows:
-venv\Scripts\activate
-
-# Linux/Mac:
-source venv/bin/activate
+.\venv\Scripts\Activate.ps1
 ```
 
-### B2. Install Dependencies
-
-```bash
+### 2. Install Dependencies (WA & SMS)
+```powershell
 pip install -r requirements.txt
+pip install playwright
 playwright install chromium
 ```
 
-### B3. Install ADB (untuk SMS)
-
-**Windows** — unduh [Android SDK Platform Tools](https://developer.android.com/studio/releases/platform-tools), ekstrak, lalu tambahkan ke PATH.
-
-Atau via winget:
+### 3. Install ADB (Khusus SMS)
+Buka PowerShell baru **sebagai Administrator**:
 ```powershell
-winget install Google.PlatformTools
+winget install Google.PlatformTools --accept-source-agreements --accept-package-agreements
 ```
+*(Lalu tutup dan buka ulang PowerShell Anda agar sistem mengenali perintah `adb`)*
 
-**Linux:**
-```bash
-sudo apt install android-tools-adb
+---
+
+## 📱 Tahap 1: Setup WhatsApp Web (Sekali Saja)
+
+1. Aktifkan Virtual Environment:
+   ```powershell
+   .\venv\Scripts\Activate.ps1
+   ```
+2. Jalankan perintah *dry run* pertama kali:
+   ```powershell
+   python src/main.py run --wa-only --dry-run
+   ```
+3. Sebuah browser Chrome akan terbuka menampilkan QR Code WhatsApp Web.
+4. Di HP Anda: Buka **WhatsApp → Titik Tiga (Opsi) → Perangkat Tertaut → Tautkan Perangkat**.
+5. Scan QR code di layar monitor Anda.
+6. Tunggu sampai daftar chat Anda muncul. Selesai! Sesi Anda telah tersimpan dengan aman di folder `wa_profile/` dan Anda **tidak perlu scan QR lagi** ke depannya.
+
+---
+
+## 💬 Tahap 2: Setup HP Android (Untuk Backup SMS)
+
+Sistem akan menggunakan kabel USB untuk mengirimkan perintah pengetikan langsung ke HP Android Anda, persis seperti robot yang mengetik di HP.
+
+1. Buka HP Android Anda.
+2. Masuk ke **Pengaturan → Tentang Ponsel** → ketuk **Nomor Versi (Build Number)** sebanyak **7 kali** (sampai muncul notif *"Mode Pengembang aktif"*).
+3. Masuk ke **Pengaturan → Opsi Pengembang (Developer Options)**.
+4. Aktifkan fitur **USB Debugging** ✓.
+5. Sambungkan HP ke komputer menggunakan kabel USB data yang bagus.
+6. **SANGAT PENTING:** Lihat layar HP Anda! Jika muncul *popup* *"Izinkan debugging USB?"*, centang opsi *"Selalu izinkan dari komputer ini"* lalu ketuk **Izinkan (OK)**.
+
+Untuk memastikan komputer Anda sudah terkoneksi ke HP, jalankan:
+```powershell
+adb devices
 ```
-
-Verifikasi:
-```bash
-adb version
-# Android Debug Bridge version 1.0.xx
+Output yang benar:
 ```
-
-### B4. Konfigurasi
-
-```bash
-copy .env.example .env   # Windows
-cp .env.example .env     # Linux/Mac
-```
-
-Edit `.env` sesuai kebutuhan.
-
-### B5. Aktifkan USB Debugging di HP Android
-
-1. **Pengaturan → Tentang Ponsel** → ketuk **Nomor Versi** 7 kali
-2. **Pengaturan → Opsi Pengembang** → aktifkan **USB Debugging**
-3. Sambungkan HP via USB → izinkan di popup HP
-4. Verifikasi: `adb devices` → harus muncul device dengan status `device`
-
-### B6. Validasi
-
-```bash
-python src/main.py validate
-```
-
-### B7. Scan QR WhatsApp (Pertama Kali)
-
-```bash
-python src/main.py run --dry-run
-```
-
-Scan QR code yang muncul di browser Chromium.
-
-### B8. Jalankan
-
-```bash
-python src/main.py run
+List of devices attached
+R5CX12345678    device    ← ✅ Berhasil (bukan "unauthorized")
 ```
 
 ---
@@ -169,42 +92,40 @@ python src/main.py run
 ```
 automation-blast-massages/
 ├── data/
-│   ├── input.csv           ← ✏️ GANTI INI setiap run (data peserta)
-│   └── reports/            ← Laporan hasil kirim (otomatis dibuat)
+│   ├── input.csv           ← ✏️ GANTI INI setiap kali mau blast baru
+│   └── reports/            ← Laporan hasil kirim otomatis (Excel/CSV)
 ├── templates/
-│   └── bpjs_message.txt    ← ✏️ Edit template pesan di sini
+│   └── bpjs_message.txt    ← ✏️ Template isi pesan (bisa diganti)
 ├── wa_profile/             ← Sesi WA Web tersimpan (jangan dihapus)
-├── screenshots/            ← Screenshot error WA (otomatis)
-└── .env                    ← ✏️ Konfigurasi (dari .env.example)
+├── .env                    ← Konfigurasi setting (opsional)
+└── setup.bat               ← Script Instalasi
 ```
 
 ---
 
-## Troubleshooting
+## 🔧 Troubleshooting (Penyelesaian Masalah)
 
-### 🟡 Docker: `failed to connect to docker API`
-→ **Docker Desktop belum dibuka.** Buka Docker Desktop, tunggu hingga status "running", lalu coba lagi.
+### 🟡 WA: Browser selalu minta scan QR padahal sudah scan?
+```powershell
+# Hapus folder wa_profile secara manual (hapus seluruh isinya)
+rmdir /s /q wa_profile
 
-### 🟡 Docker: warning `version is obsolete`
-→ Sudah diperbaiki (baris `version` dihapus dari `docker-compose.yml`).
-
-### 🟡 WA: QR expired / harus scan ulang
-```bash
-# Hapus sesi lama
-rmdir /s /q wa_profile   # Windows
-rm -rf wa_profile/       # Linux/Mac
-
-# Jalankan ulang
-docker-compose run --rm blast run --dry-run   # Docker
-python src/main.py run --dry-run              # Non-Docker
+# Jalankan ulang dan scan QR yang baru
+python src/main.py run --wa-only --dry-run
 ```
 
 ### 🟡 SMS: "Tidak ada HP yang terdeteksi"
-- Cek kabel USB
-- Pastikan USB Debugging aktif
-- Jalankan `adb kill-server && adb start-server`
-- Di Docker Windows: ADB via USB memerlukan konfigurasi tambahan (disarankan pakai non-Docker untuk SMS)
+- Cek kabel USB (jangan gunakan kabel yang hanya untuk *charging*).
+- Pastikan popup *USB Debugging* di HP sudah ditekan "Izinkan".
+- Jika ADB macet, restart layanan ADB dengan perintah:
+  ```powershell
+  adb kill-server
+  adb start-server
+  ```
 
-### 🟡 SMS: Pesan tidak terkirim otomatis
-- Naikkan `ADB_SEND_WAIT` di `.env` (coba nilai 5 atau 7)
-- Pastikan layar HP tidak terkunci saat proses berjalan
+### 🟡 WA/SMS: Script berjalan tapi "Timeout / Error"
+- Untuk WhatsApp: Pastikan internet komputer Anda stabil karena browser *headless* membutuhkan waktu *loading*.
+- Untuk SMS: Pastikan layar HP dalam keadaan **menyala (tidak terkunci / password)** selama proses pengiriman berlangsung! Robot kita tidak bisa mengetik jika HP terkunci.
+
+---
+*Dibuat untuk BPJS Kesehatan Kantor Cabang Serang*

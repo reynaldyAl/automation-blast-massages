@@ -1,199 +1,305 @@
 # 📖 Panduan Penggunaan — BPJS Blast Message Automation
 
-## Alur Kerja Setiap Pengiriman
+> **Arsitektur yang digunakan:**
+> - 📱 **WhatsApp** → 🐳 **Docker** (tidak perlu install Python/Playwright)
+> - 💬 **SMS** → 🐍 **Python langsung** (karena ADB butuh akses USB ke Windows)
 
+---
+
+## ─────────────────────────────────────────
+## 📱 BAGIAN 1 — WHATSAPP (via Docker)
+## ─────────────────────────────────────────
+
+### Prasyarat
+- ✅ **Docker Desktop** sudah terinstall dan **sedang berjalan** (icon whale di taskbar)
+
+---
+
+### Step WA-1 — Siapkan Data & Config
+
+**Edit `data/input.csv`** — isi dengan data peserta nyata:
+```csv
+nomor,nama_peserta,nokapst,nohp,send_wa,send_sms
+1,SUROTO,0002223480115,087771580543,TRUE,TRUE
+2,SITI AMINAH,0001082332293,081234567890,TRUE,TRUE
 ```
-1. Edit data/input.csv  →  2. (Opsional) Edit template  →  3. Validate  →  4. Run
+
+**Edit `.env`** — pastikan setting ini:
+```ini
+SEND_WA=true
+SEND_SMS=false      ← set false untuk WA-only run
+WA_HEADLESS=false   ← false agar browser muncul (wajib untuk scan QR)
+WA_DELAY_SECONDS=5
 ```
 
 ---
 
-## 💬 Daftar Perintah
-
-Setiap perintah tersedia dalam dua versi: **Docker** dan **Python langsung**.
-
-### `run` — Kirim Pesan
+### Step WA-2 — Validasi
 
 ```bash
-# 🐳 Docker
-docker-compose run --rm blast run
-
-# 🐍 Python
-python src/main.py run
-```
-
-| Option | Keterangan |
-|---|---|
-| `--dry-run` | Preview tanpa kirim pesan |
-| `--wa-only` | Hanya kirim via WhatsApp |
-| `--sms-only` | Hanya kirim via SMS |
-| `--fresh` | Reset progress, mulai dari awal |
-| `--csv PATH` | Gunakan CSV selain default |
-| `--template PATH` | Gunakan template selain default |
-
-**Contoh:**
-```bash
-# 🐳 Docker
-docker-compose run --rm blast run --dry-run
-docker-compose run --rm blast run --wa-only
-docker-compose run --rm blast run --csv data/batch2.csv
-docker-compose run --rm blast run --wa-only --template templates/reminder.txt
-
-# 🐍 Python
-python src/main.py run --dry-run
-python src/main.py run --wa-only
-python src/main.py run --csv data/batch2.csv
-```
-
----
-
-### `validate` — Validasi Sebelum Kirim
-
-```bash
-# 🐳 Docker
 docker-compose run --rm blast validate
+```
 
-# 🐍 Python
+Pastikan output:
+```
+✓ Konfigurasi valid
+✓ CSV valid: X peserta ditemukan
+```
+
+> ⚠ Warning ADB "tidak ada HP" di sini normal — kita pakai Docker untuk WA saja.
+
+---
+
+### Step WA-3 — Scan QR WhatsApp (HANYA PERTAMA KALI)
+
+```bash
+docker-compose run --rm blast run --dry-run
+```
+
+1. Browser Chromium terbuka otomatis
+2. Di HP: **WhatsApp → ⋮ Titik Tiga → Perangkat Tertaut → Tautkan Perangkat**
+3. Scan QR code yang muncul di browser
+4. Tunggu sampai WA Web menampilkan daftar chat
+5. ✅ Sesi tersimpan di folder `wa_profile/` — **tidak perlu scan QR lagi**
+
+> Sesi WA biasanya bertahan 14–30 hari.
+> Jika expired: hapus folder `wa_profile/` dan ulangi step ini.
+
+---
+
+### Step WA-4 — Kirim WhatsApp
+
+```bash
+docker-compose run --rm blast run --wa-only
+```
+
+Output yang berjalan normal:
+```
+✓ WhatsApp Web siap!
+  SUROTO          08777...   WA: ✅ SUCCESS   SMS: —
+  SITI AMINAH     08123...   WA: ✅ SUCCESS   SMS: —
+  ...
+```
+
+---
+
+### Perintah WA Lainnya
+
+```bash
+# Preview pesan (cek template dulu)
+docker-compose run --rm blast preview
+
+# Dry run (test tanpa kirim sungguhan)
+docker-compose run --rm blast run --wa-only --dry-run
+
+# Lanjut dari yang belum terkirim (jika terhenti di tengah)
+docker-compose run --rm blast run --wa-only
+
+# Mulai ulang dari awal
+docker-compose run --rm blast run --wa-only --fresh
+
+# Lihat laporan hasil
+docker-compose run --rm blast report
+```
+
+---
+
+## ─────────────────────────────────────────
+## 💬 BAGIAN 2 — SMS (via Python Langsung)
+## ─────────────────────────────────────────
+
+### Prasyarat
+- ✅ Python 3.10+ (cek: `python --version`)
+- ✅ ADB terinstall (cek: `adb version`)
+- ✅ HP Android tersambung USB dengan USB Debugging aktif
+- ✅ Virtual environment sudah dibuat (`venv/`)
+- ✅ Dependencies terinstall (`requirements-sms.txt`)
+
+> Jika belum setup: jalankan `setup.bat` sebagai Administrator.
+
+---
+
+### Step SMS-1 — Buka Terminal & Aktifkan venv
+
+Buka **Command Prompt** atau **PowerShell**, lalu:
+
+```powershell
+# Pindah ke folder project
+cd "D:\04 Grinding\02_Github\automation-blast-massages"
+
+# Aktifkan virtual environment
+.\venv\Scripts\Activate.ps1        # PowerShell
+# ATAU
+venv\Scripts\activate.bat          # Command Prompt
+```
+
+Tanda venv aktif: ada `(venv)` di awal baris terminal.
+
+---
+
+### Step SMS-2 — Sambungkan HP Android
+
+1. Pastikan **USB Debugging** aktif di HP:
+   ```
+   Pengaturan → Tentang Ponsel → ketuk Nomor Versi 7x
+   Pengaturan → Opsi Pengembang → USB Debugging → ON
+   ```
+
+2. Sambungkan HP via kabel USB ke komputer
+
+3. Di HP: tap **"Izinkan"** pada popup USB Debugging
+
+4. Verifikasi koneksi:
+   ```powershell
+   adb devices
+   ```
+   Output harus:
+   ```
+   List of devices attached
+   e41d1fee    device   ← ✅ HP terdeteksi
+   ```
+
+> Jika `unauthorized`: cabut-pasang kabel, cek popup di HP.
+
+---
+
+### Step SMS-3 — Siapkan Data & Config
+
+**Edit `data/input.csv`:**
+```csv
+nomor,nama_peserta,nokapst,nohp,send_wa,send_sms
+1,SUROTO,0002223480115,087771580543,TRUE,TRUE
+```
+
+**Edit `.env`:**
+```ini
+SEND_SMS=true
+SEND_WA=false       ← set false untuk SMS-only run
+SMS_DELAY_SECONDS=10
+ADB_SEND_WAIT=3     ← naikkan ke 5-7 jika SMS tidak terkirim otomatis
+```
+
+> ⚠ **Penting:** Layar HP harus **menyala (tidak terkunci)** saat pengiriman SMS.
+
+---
+
+### Step SMS-4 — Validasi
+
+```powershell
 python src/main.py validate
 ```
 
-Mengecek:
-- ✓ File CSV ditemukan dan kolom lengkap
-- ✓ Konfigurasi `.env` valid
-- ✓ HP Android terdeteksi via ADB
-- ⚠ Nomor HP yang tidak valid (akan di-skip)
-
----
-
-### `preview` — Lihat Preview Pesan
-
-```bash
-# 🐳 Docker
-docker-compose run --rm blast preview
-docker-compose run --rm blast preview --nama "BUDI SANTOSO" --nokapst "0001234567890"
-
-# 🐍 Python
-python src/main.py preview
-python src/main.py preview --nama "BUDI SANTOSO" --nokapst "0001234567890"
+Output yang diharapkan:
+```
+✓ Konfigurasi valid
+✓ CSV valid: X peserta ditemukan
+✓ ADB: HP terdeteksi — e41d1fee   ← HP harus muncul di sini
 ```
 
 ---
 
-### `report` — Lihat Laporan Terakhir
+### Step SMS-5 — Dry Run (Test Tanpa Kirim)
 
-```bash
-# 🐳 Docker
-docker-compose run --rm blast report
+```powershell
+python src/main.py run --sms-only --dry-run
+```
 
-# 🐍 Python
+Ini akan menampilkan preview tanpa benar-benar membuka aplikasi SMS di HP.
+
+---
+
+### Step SMS-6 — Kirim SMS
+
+```powershell
+python src/main.py run --sms-only
+```
+
+Yang terjadi di HP:
+1. Aplikasi SMS terbuka otomatis
+2. Nomor tujuan terisi otomatis
+3. Isi pesan terisi otomatis
+4. Tombol Kirim ditekan otomatis
+5. Lanjut ke peserta berikutnya
+
+> **Layar HP harus menyala selama proses berlangsung!**
+
+---
+
+### Perintah SMS Lainnya
+
+```powershell
+# Preview pesan
+python src/main.py preview
+
+# Dry run (test tanpa kirim)
+python src/main.py run --sms-only --dry-run
+
+# Lanjut dari yang belum terkirim (resume)
+python src/main.py run --sms-only
+
+# Mulai ulang dari awal
+python src/main.py run --sms-only --fresh
+
+# Lihat laporan
 python src/main.py report
 ```
 
 ---
 
-## 📊 Memahami Status Pengiriman
+## ─────────────────────────────────────────
+## 🔄 BAGIAN 3 — WA + SMS BERSAMAAN
+## ─────────────────────────────────────────
 
-| Status | Keterangan | Tindakan |
-|---|---|---|
-| `SUCCESS` | ✅ Pesan berhasil dikirim | — |
-| `FAILED` | ❌ Gagal kirim (error teknis) | Cek log, akan di-retry otomatis |
-| `INVALID_PHONE` | ⚠ Nomor HP tidak valid | Perbaiki di CSV |
-| `NOT_ON_WA` | ⚠ Nomor tidak terdaftar di WA | Kirim SMS saja |
-| `NO_DEVICE` | ⚠ HP tidak terdeteksi ADB | Cek koneksi USB |
-| `SKIPPED` | — Channel dinonaktifkan | Normal |
+Karena WA pakai Docker dan SMS pakai Python, keduanya **tidak bisa dijalankan dalam satu perintah** secara bersamaan di setup ini.
+
+**Cara yang disarankan — jalankan secara urut:**
+
+```bash
+# Step 1: Kirim WA dulu via Docker
+docker-compose run --rm blast run --wa-only
+
+# Step 2: Setelah WA selesai, kirim SMS via Python
+.\venv\Scripts\Activate.ps1
+python src/main.py run --sms-only
+```
+
+> Laporan CSV akan mencatat kedua channel secara terpisah di `data/reports/`.
 
 ---
 
-## ↺ Resume Mode (Lanjut Setelah Gangguan)
+## 📊 Memahami Status di Laporan
 
-Jika proses berhenti di tengah (mati lampu, error kritis, dll.):
-
-```bash
-# 🐳 Docker — otomatis lanjut dari yang belum terkirim
-docker-compose run --rm blast run
-
-# 🐍 Python
-python src/main.py run
-```
-
-Sistem menyimpan progress di file `.state.json`. Untuk mulai dari awal:
-
-```bash
-# 🐳 Docker
-docker-compose run --rm blast run --fresh
-
-# 🐍 Python
-python src/main.py run --fresh
-```
-
----
-
-## 📦 Multi-Batch / Multi-Template
-
-Untuk mengirim ke beberapa kelompok dengan template berbeda:
-
-```bash
-# 🐳 Docker
-docker-compose run --rm blast run --csv data/tunggakan.csv --template templates/bpjs_message.txt
-docker-compose run --rm blast run --csv data/reminder.csv --template templates/reminder.txt
-
-# 🐍 Python
-python src/main.py run --csv data/tunggakan.csv --template templates/bpjs_message.txt
-python src/main.py run --csv data/reminder.csv --template templates/reminder.txt
-```
-
----
-
-## 📋 Laporan CSV
-
-File laporan tersimpan di `data/reports/report_YYYYMMDD_HHMMSS.csv`.
-
-| Kolom | Keterangan |
+| Status | Arti |
 |---|---|
-| `nomor` | Nomor urut |
-| `nama_peserta` | Nama peserta |
-| `nokapst` | Nomor kartu |
-| `nohp_original` | Nomor asli dari CSV |
-| `nohp_normalized` | Nomor setelah normalisasi |
-| `phone_valid` | TRUE/FALSE |
-| `wa_status` | Status pengiriman WA |
-| `wa_error` | Pesan error WA (jika ada) |
-| `wa_screenshot` | Path screenshot error |
-| `sms_status` | Status pengiriman SMS |
-| `sms_error` | Pesan error SMS (jika ada) |
-| `timestamp` | Waktu pengiriman |
-| `retry_count` | Jumlah percobaan retry |
+| `SUCCESS` | ✅ Pesan berhasil terkirim |
+| `FAILED` | ❌ Gagal kirim (error teknis, akan di-retry) |
+| `INVALID_PHONE` | ⚠ Nomor HP tidak valid / format salah |
+| `NOT_ON_WA` | ⚠ Nomor tidak terdaftar di WhatsApp |
+| `NO_DEVICE` | ⚠ HP tidak terdeteksi ADB |
+| `SKIPPED` | — Channel dinonaktifkan untuk baris ini |
 
 ---
 
-## 📅 Mengaktifkan Scheduler
+## ❓ Troubleshooting
 
-Untuk mengirim otomatis setiap hari jam 09:00, edit `.env`:
+### WA: Browser tidak muncul
+→ Pastikan `WA_HEADLESS=false` di `.env`
 
-```ini
-SCHEDULER_ENABLED=true
-SCHEDULER_CRON=0 9 * * *
-```
-
-Lalu jalankan:
-
+### WA: QR expired / harus scan ulang
 ```bash
-# 🐳 Docker
-docker-compose run --rm blast run
-
-# 🐍 Python
-python src/main.py run
+rmdir /s /q wa_profile
+docker-compose run --rm blast run --dry-run
 ```
 
-Proses menunggu jadwal dan berjalan otomatis. Tekan `Ctrl+C` untuk menghentikan.
+### SMS: HP tidak terdeteksi
+```powershell
+adb kill-server
+adb start-server
+adb devices
+```
 
----
+### SMS: Pesan terbuka tapi tidak terkirim otomatis
+→ Naikkan `ADB_SEND_WAIT=5` (atau 7) di `.env`
 
-## 💡 Tips & Best Practices
-
-1. **Selalu `validate` dulu** sebelum run di produksi
-2. **Gunakan `--dry-run`** untuk cek template dengan data baru
-3. **Jangan terlalu cepat** — atur `WA_DELAY_SECONDS` minimal 5 detik
-4. **Backup laporan** CSV dari `data/reports/` secara berkala
-5. **Layar HP harus menyala** saat proses SMS berlangsung
-6. **Docker untuk produksi**, Python langsung untuk development/testing
+### SMS: Layar HP mati di tengah proses
+→ Atur **"Jangan matikan layar"** di Opsi Pengembang HP, atau naikkan timeout layar HP ke maksimum

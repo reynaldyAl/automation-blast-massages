@@ -1,78 +1,76 @@
 # 🏥 BPJS Blast Message Automation
 
 Sistem otomasi pengiriman pesan blast untuk **BPJS Kesehatan Kantor Cabang Serang**.
-Mendukung dua channel: **WhatsApp Web** dan **SMS via HP Android (ADB/USB)**.
-
-> Cukup ganti `data/input.csv` → jalankan → selesai. ✅
+Mendukung pengiriman multi-channel: **WhatsApp Web** dan **SMS via HP Android (ADB/USB)**.
 
 ---
 
-## ✨ Fitur
+## 🚀 Cara Setup di Device / Komputer Baru
+
+Jika Anda baru saja melakukan clone dari GitHub ke device baru, ikuti **1 langkah super mudah** ini:
+
+Cukup klik ganda (jalankan) file **`setup.bat`** di folder project.
+Atau buka PowerShell dan ketik:
+```cmd
+.\setup.bat
+```
+*(Script ajaib ini akan menginstall Python virtual environment, mengunduh Playwright + Chromium untuk WA Web, serta menyetel **Android Debug Bridge (ADB)** untuk SMS secara otomatis 100% siap pakai).*
+
+---
+
+## 📱 Cara Penggunaan (Daily Usage)
+
+Setiap hari saat Anda ingin mengirim pesan, cukup:
+1. Ganti isi file `data/input.csv` dengan data terbaru.
+2. Edit pesan di `templates/bpjs_message.txt`.
+3. Buka PowerShell di folder project, lalu masuk ke Virtual Environment:
+   ```powershell
+   .\venv\Scripts\Activate.ps1
+   ```
+
+**Sangat disarankan** untuk menjalankan WhatsApp terlebih dahulu sampai selesai, baru kemudian menjalankan SMS untuk mereka yang gagal/tidak punya WA.
+
+### Tahap 1: Mengirim WhatsApp
+```powershell
+# Jalankan simulasi (Dry Run) & Scan QR Code WA Web
+python src/main.py run --wa-only --dry-run
+
+# Jika QR sudah terscan dan siap, jalankan pengiriman sungguhan:
+python src/main.py run --wa-only
+```
+*(Catatan: Sistem akan cerdas mencatat siapa saja yang "NOT ON WA" (tidak terdaftar di WhatsApp) di dalam log/laporan).*
+
+### Tahap 2: Mengirim SMS (sebagai Backup)
+Pastikan HP Android menyala, layar tidak terkunci, kabel USB terhubung, dan **USB Debugging** diizinkan di layar HP Anda.
+*(Fitur canggih: Sistem otomatis memindai layar HP untuk mencari tombol "Kirim", terlepas dari merek HP Anda!)*
+
+```powershell
+# Jalankan simulasi (Dry Run) untuk mengetes koneksi HP:
+python src/main.py run --sms-only --dry-run
+
+# Mulai Blast SMS! (Otomatis hanya mengirim ke yang belum sukses WA)
+python src/main.py run --sms-only
+```
+
+> **Tips:** Anda bisa melihat rekapan siapa saja yang berhasil dikirim di folder `data/reports/`.
+> Jika ada masalah dan Anda ingin mengulang dari nomor 1, tambahkan parameter `--fresh`.
+
+---
+
+## ✨ Fitur Utama
 
 | Fitur | Keterangan |
 |---|---|
-| 📱 **WA Web Automation** | Playwright Chromium, persistent login (QR sekali) |
-| 💬 **SMS via ADB** | Kirim SMS langsung dari HP Android via USB |
-| 📄 **Template Jinja2** | Edit template pesan tanpa ubah kode |
+| 📱 **WA Web Automation** | Bekerja senatural manusia (Bebas Blokir) |
+| 💬 **SMS Auto-Detect** | Kirim SMS via USB, *AI UI Scanning* otomatis cari tombol Send |
+| ⚡ **Setup Instan** | `setup.bat` langsung siap pakai di Windows |
+| 📄 **Template Jinja2** | Edit template pesan (termasuk baris baru) dengan mudah |
 | ✅ **Validasi Nomor HP** | Normalisasi 08xx→628xx, deteksi nomor tidak valid |
-| 📸 **Screenshot on Error** | Capture browser saat nomor WA bermasalah |
 | 🔁 **Retry Otomatis** | Ulangi pesan yang gagal secara otomatis |
 | ↺ **Resume Mode** | Lanjut dari baris terakhir jika proses terhenti |
 | 🧪 **Dry Run Mode** | Preview pesan tanpa benar-benar mengirim |
 | 📊 **Dashboard Terminal** | Progress bar dan ringkasan berwarna (Rich) |
 | 📋 **Laporan CSV** | Hasil kirim real-time, tersimpan di `data/reports/` |
-| ⏱ **Rate Limiter** | Delay antar pesan, anti-banned WA |
-| 📅 **Scheduler** | Kirim terjadwal via cron (nonaktif by default) |
-| 🐳 **Docker** | Siap deploy dengan docker-compose |
-
----
-
-## 🚀 Quick Start
-
-### 🐳 Dengan Docker (Direkomendasikan)
-
-> **Prasyarat:** Hanya [Docker Desktop](https://www.docker.com/products/docker-desktop/) — pastikan sudah **dibuka dan berjalan** sebelum menjalankan perintah di bawah.
-
-```bash
-# 1. Salin & edit konfigurasi
-copy .env.example .env        # Windows
-cp .env.example .env          # Linux/Mac
-
-# 2. Edit data/input.csv (isi data peserta)
-
-# 3. Build image (sekali saja)
-docker-compose build
-
-# 4. Validasi
-docker-compose run --rm blast validate
-
-# 5. Preview tanpa kirim
-docker-compose run --rm blast run --dry-run
-
-# 6. Kirim!
-docker-compose run --rm blast run
-```
-
-### 🐍 Tanpa Docker (Python Langsung)
-
-> **Prasyarat:** Python 3.10+ — [Download](https://www.python.org/downloads/)
-
-```bash
-# Setup virtual environment
-python -m venv venv
-venv\Scripts\activate       # Windows
-source venv/bin/activate    # Linux/Mac
-
-# Install dependencies
-pip install -r requirements.txt
-playwright install chromium
-
-# Konfigurasi & jalankan
-copy .env.example .env
-python src/main.py validate
-python src/main.py run --dry-run
-python src/main.py run
-```
 
 ---
 
@@ -87,26 +85,7 @@ automation-blast-massages/
 │   └── bpjs_message.txt       ← ✏️ Edit template pesan di sini
 ├── src/
 │   ├── main.py                ← Entry point CLI
-│   ├── config.py              ← Konfigurasi dari .env
-│   ├── csv_handler.py         ← Baca & validasi CSV
-│   ├── phone_validator.py     ← Normalisasi nomor HP
-│   ├── template_engine.py     ← Render template Jinja2
-│   ├── wa_sender.py           ← WA Web (Playwright)
-│   ├── sms_sender.py          ← SMS via ADB
-│   ├── reporter.py            ← Logging & laporan CSV
-│   ├── dashboard.py           ← Terminal UI (Rich)
-│   └── scheduler.py           ← Scheduler (APScheduler)
-├── docs/
-│   ├── SETUP.md               ← Panduan setup lengkap
-│   └── USAGE.md               ← Panduan penggunaan
-├── wa_profile/                ← Sesi WA tersimpan di sini
-├── screenshots/               ← Screenshot error WA
-├── .env.example               ← Template konfigurasi
-├── Dockerfile
-└── docker-compose.yml
 ```
-
----
 
 ## 📋 Format CSV
 
@@ -118,33 +97,19 @@ nomor,nama_peserta,nokapst,nohp,send_wa,send_sms
 
 ---
 
-## 💬 Perintah
+## 💬 Daftar Perintah CLI
 
-Setiap perintah tersedia dalam dua versi:
+Pastikan selalu mengaktifkan environment (`.\venv\Scripts\Activate.ps1`) sebelum menjalankan ini:
 
-| Aksi | 🐳 Docker | 🐍 Python |
-|---|---|---|
-| Kirim semua | `docker-compose run --rm blast run` | `python src/main.py run` |
-| Dry run | `... run --dry-run` | `... run --dry-run` |
-| Hanya WA | `... run --wa-only` | `... run --wa-only` |
-| Hanya SMS | `... run --sms-only` | `... run --sms-only` |
-| Reset & ulang | `... run --fresh` | `... run --fresh` |
-| Validasi | `... validate` | `... validate` |
-| Preview template | `... preview` | `... preview` |
-| Lihat laporan | `... report` | `... report` |
-
----
-
-## 📖 Dokumentasi Lengkap
-
-- [📋 SETUP.md](docs/SETUP.md) — Panduan setup dari awal (Docker & Python)
-- [📖 USAGE.md](docs/USAGE.md) — Panduan penggunaan lengkap
-
----
-
-## 🛠 Tech Stack
-
-- **Python 3.11** · **Playwright** · **ADB** · **Jinja2** · **Rich + Click** · **Pandas** · **APScheduler** · **Docker**
+| Aksi | Perintah Python |
+|---|---|
+| Kirim semua | `python src/main.py run` |
+| Dry run | `python src/main.py run --dry-run` |
+| Hanya WA | `python src/main.py run --wa-only` |
+| Hanya SMS | `python src/main.py run --sms-only` |
+| Reset & ulang | `python src/main.py run --fresh` |
+| Validasi data | `python src/main.py validate` |
+| Preview pesan | `python src/main.py preview` |
 
 ---
 

@@ -1,0 +1,19 @@
+# Requirements khusus SMS-only (tanpa Playwright/greenlet)
+# Tidak perlu Microsoft C++ Build Tools
+# Gunakan: pip install -r requirements-sms.txt
+
+python-dotenv==1.0.1
+jinja2==3.1.4
+click==8.1.7
+
+# Terminal UI
+rich==13.7.1
+
+# Data handling
+pandas>=2.3.0
+
+# Scheduler (opsional)
+apscheduler==3.10.4
+
+# Utilities
+phonenumbers==8.13.39
