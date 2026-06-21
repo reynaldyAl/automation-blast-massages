@@ -16,6 +16,12 @@ import sys
 import time
 from pathlib import Path
 
+# ── Fix encoding UTF-8 untuk Windows (mencegah UnicodeEncodeError pada emoji) ─
+# Terminal Windows default pakai cp1252 yang tidak support karakter Unicode
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # Pastikan src/ ada di path
 sys.path.insert(0, str(Path(__file__).parent))
 
