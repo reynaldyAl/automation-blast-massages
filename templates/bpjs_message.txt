@@ -1,0 +1,7 @@
+Selamat siang Bapak/Ibu Keluarga *{{ nama_peserta }}*, kami dari BPJS Kesehatan Kantor Cabang Serang bermaksud menyampaikan informasi bahwa nomor kartu JKN-KIS Keluarga *{{ nokapst }}*.
+
+Silahkan lakukan pengecekan tunggakan pada aplikasi Mobile JKN dan segera lakukan pembayaran di kanal pembayaran iuran BPJS Kesehatan (Bank Mandiri, BNI, BTN, BRI, BCA, Indomaret, Tokopedia, Alfamart, PT Pos dan lain-lain).
+
+*Mohon abaikan pesan ini apabila Bapak/Ibu sudah melakukan pembayaran*
+
+Salam BPJS Kesehatan Kantor Cabang Serang. Semoga sehat selalu.
