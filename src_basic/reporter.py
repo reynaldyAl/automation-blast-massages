@@ -1,0 +1,178 @@
+"""
+reporter.py — Pencatatan log dan pembuatan laporan CSV hasil pengiriman
+"""
+
+import csv
+import json
+import logging
+from dataclasses import dataclass, field, asdict
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional
+
+from config import config
+
+# ─── Setup logging ke file ────────────────────────────────────────────────────
+log_formatter = logging.Formatter("[%(asctime)s] %(levelname)s — %(message)s", "%Y-%m-%d %H:%M:%S")
+logger = logging.getLogger("blast")
+logger.setLevel(logging.DEBUG)
+
+_log_file = config.REPORT_DIR / f"blast_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+_fh = logging.FileHandler(_log_file, encoding="utf-8")
+_fh.setFormatter(log_formatter)
+logger.addHandler(_fh)
+
+
+# ─── Status Constants ─────────────────────────────────────────────────────────
+class Status:
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    INVALID_PHONE = "INVALID_PHONE"
+    NOT_ON_WA = "NOT_ON_WA"
+    SKIPPED = "SKIPPED"
+    NO_DEVICE = "NO_DEVICE"
+    RETRYING = "RETRYING"
+
+
+@dataclass
+class SendResult:
+    """Hasil pengiriman untuk satu peserta, satu channel."""
+    row_index: int
+    nomor: Optional[int]
+    nama_peserta: str
+    nohp_original: str
+    nohp_normalized: str
+    phone_valid: bool
+    wa_status: str = Status.SKIPPED
+    wa_error: str = ""
+    wa_screenshot: str = ""
+    sms_status: str = Status.SKIPPED
+    sms_error: str = ""
+    timestamp: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    retry_count: int = 0
+
+
+class Reporter:
+    """Mengelola pencatatan hasil dan penulisan laporan CSV."""
+
+    REPORT_COLUMNS = [
+        "nomor", "nama_peserta",
+        "nohp_original", "nohp_normalized", "phone_valid",
+        "wa_status", "wa_error", "wa_screenshot",
+        "sms_status", "sms_error",
+        "timestamp", "retry_count",
+    ]
+
+    def __init__(self):
+        config.ensure_dirs()
+        self._results: List[SendResult] = []
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.report_path = config.REPORT_DIR / f"report_{ts}.csv"
+        self._init_report_file()
+
+    def _init_report_file(self):
+        """Buat file CSV dan tulis header."""
+        with open(self.report_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=self.REPORT_COLUMNS)
+            writer.writeheader()
+
+    def record(self, result: SendResult):
+        """Catat hasil pengiriman dan append ke CSV secara langsung (real-time)."""
+        self._results.append(result)
+        self._append_to_csv(result)
+
+        # Log berdasarkan status
+        wa_info = f"WA={result.wa_status}" if result.wa_status != Status.SKIPPED else ""
+        sms_info = f"SMS={result.sms_status}" if result.sms_status != Status.SKIPPED else ""
+        channel_info = " | ".join(filter(None, [wa_info, sms_info]))
+
+        if result.wa_status in (Status.FAILED, Status.NOT_ON_WA, Status.INVALID_PHONE) or \
+                result.sms_status in (Status.FAILED, Status.NO_DEVICE, Status.INVALID_PHONE):
+            logger.warning(
+                f"[{result.nama_peserta}] {result.nohp_original} → {channel_info}"
+                f"{' | ERR: ' + result.wa_error if result.wa_error else ''}"
+                f"{' | ERR: ' + result.sms_error if result.sms_error else ''}"
+            )
+        else:
+            logger.info(f"[{result.nama_peserta}] {result.nohp_original} → {channel_info}")
+
+    def _append_to_csv(self, result: SendResult):
+        with open(self.report_path, "a", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=self.REPORT_COLUMNS)
+            row = asdict(result)
+            writer.writerow({k: row[k] for k in self.REPORT_COLUMNS})
+
+    def get_summary(self) -> dict:
+        """Hitung ringkasan hasil pengiriman."""
+        total = len(self._results)
+        wa_results = [r for r in self._results if r.wa_status != Status.SKIPPED]
+        sms_results = [r for r in self._results if r.sms_status != Status.SKIPPED]
+
+        return {
+            "total": total,
+            "wa_total": len(wa_results),
+            "wa_success": sum(1 for r in wa_results if r.wa_status == Status.SUCCESS),
+            "wa_failed": sum(1 for r in wa_results if r.wa_status == Status.FAILED),
+            "wa_not_on_wa": sum(1 for r in wa_results if r.wa_status == Status.NOT_ON_WA),
+            "wa_invalid": sum(1 for r in wa_results if r.wa_status == Status.INVALID_PHONE),
+            "sms_total": len(sms_results),
+            "sms_success": sum(1 for r in sms_results if r.sms_status == Status.SUCCESS),
+            "sms_failed": sum(1 for r in sms_results if r.sms_status == Status.FAILED),
+            "sms_no_device": sum(1 for r in sms_results if r.sms_status == Status.NO_DEVICE),
+            "invalid_phone": sum(1 for r in self._results if not r.phone_valid),
+            "report_path": str(self.report_path),
+            "log_path": str(_log_file),
+        }
+
+    def get_failed_for_retry(self) -> List[int]:
+        """Kembalikan row_index dari semua pengiriman yang gagal."""
+        failed = []
+        for r in self._results:
+            if r.wa_status in (Status.FAILED,) or r.sms_status in (Status.FAILED,):
+                failed.append(r.row_index)
+        return failed
+
+
+# ─── State File (Resume Mode) ─────────────────────────────────────────────────
+class StateManager:
+    """Menyimpan progress pengiriman agar bisa resume jika proses terhenti."""
+
+    def __init__(self, state_file: Path = config.STATE_FILE):
+        self.state_file = state_file
+        self._state = self._load()
+
+    def _load(self) -> dict:
+        if self.state_file.exists():
+            try:
+                with open(self.state_file, encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
+
+    def _save(self):
+        with open(self.state_file, "w", encoding="utf-8") as f:
+            json.dump(self._state, f, indent=2)
+
+    def is_done(self, row_index: int) -> bool:
+        return str(row_index) in self._state.get("done", {})
+
+    def mark_done(self, row_index: int, wa_status: str, sms_status: str):
+        if "done" not in self._state:
+            self._state["done"] = {}
+        self._state["done"][str(row_index)] = {
+            "wa": wa_status,
+            "sms": sms_status,
+            "at": datetime.now().isoformat(),
+        }
+        self._save()
+
+    def clear(self):
+        """Reset state (mulai dari awal)."""
+        if self.state_file.exists():
+            self.state_file.unlink()
+        self._state = {}
+
+    @property
+    def done_count(self) -> int:
+        return len(self._state.get("done", {}))
