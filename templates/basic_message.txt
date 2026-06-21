@@ -1,0 +1,7 @@
+Halo kak {{ nama_peserta }},
+
+Kami mengundang kakak untuk hadir di acara {{ acara }} yang akan diselenggarakan pada:
+Tanggal: {{ tanggal }}
+Waktu: {{ waktu }}
+
+Kehadiran kakak sangat kami nantikan. Terima kasih!
