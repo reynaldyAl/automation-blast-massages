@@ -40,6 +40,7 @@ class Config:
     SMS_DELAY_SECONDS: int = _get_int("SMS_DELAY_SECONDS", 10)
     ADB_DEVICE_ID: str = os.getenv("ADB_DEVICE_ID", "").strip()
     ADB_SEND_WAIT: int = _get_int("ADB_SEND_WAIT", 3)
+    SMS_SEND_COORDS: str = os.getenv("SMS_SEND_COORDS", "").strip()
 
     # === RETRY ===
     RETRY_FAILED: bool = _get_bool("RETRY_FAILED", True)
