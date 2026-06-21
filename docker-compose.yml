@@ -18,12 +18,17 @@ services:
       - ./screenshots:/app/screenshots
       # Template pesan (edit langsung tanpa rebuild)
       - ./templates:/app/templates
+      # Source code (agar kode Python lokal sinkron tanpa perlu docker build)
+      - ./src:/app/src
       # .env config
       - ./.env:/app/.env:ro
       # USB device access untuk ADB
       - /dev/bus/usb:/dev/bus/usb
 
     environment:
+      # Di dalam Docker, browser WA harus selalu berjalan di background (headless)
+      # karena container Linux tidak memiliki layar/GUI.
+      - WA_HEADLESS=true
       - DISPLAY=${DISPLAY:-:0}   # Untuk WA_HEADLESS=false (butuh X11 forwarding)
       - PYTHONUNBUFFERED=1
 
