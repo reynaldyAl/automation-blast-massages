@@ -1,0 +1,59 @@
+services:
+  blast:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bpjs-blast-automation:latest
+    container_name: bpjs_blast
+
+    # ── Akses ke USB (untuk ADB / HP Android) ──────────────────────────────
+    # Diperlukan agar container bisa detect HP Android via USB
+    privileged: true
+    volumes:
+      # Data CSV input & output report
+      - ./data:/app/data
+      # WA persistent profile (agar tidak perlu scan QR ulang)
+      - ./wa_profile:/app/wa_profile
+      # Screenshots error
+      - ./screenshots:/app/screenshots
+      # Template pesan (edit langsung tanpa rebuild)
+      - ./templates:/app/templates
+      # .env config
+      - ./.env:/app/.env:ro
+      # USB device access untuk ADB
+      - /dev/bus/usb:/dev/bus/usb
+
+    environment:
+      - DISPLAY=${DISPLAY:-:0}   # Untuk WA_HEADLESS=false (butuh X11 forwarding)
+      - PYTHONUNBUFFERED=1
+
+    # ── X11 untuk browser terlihat (opsional, jika WA_HEADLESS=false) ──────
+    # Uncomment baris berikut jika ingin browser tampil di host Linux
+    # network_mode: host
+    # volumes:
+    #   - /tmp/.X11-unix:/tmp/.X11-unix
+
+    # Default command: tampilkan help
+    command: ["--help"]
+
+    # ── Restart policy ────────────────────────────────────────────────────────
+    restart: "no"
+
+# ─── Cara Penggunaan ───────────────────────────────────────────────────────────
+# Build image:
+#   docker-compose build
+#
+# Jalankan kirim semua pesan:
+#   docker-compose run --rm blast run
+#
+# Dry run (preview):
+#   docker-compose run --rm blast run --dry-run
+#
+# Validasi CSV & config:
+#   docker-compose run --rm blast validate
+#
+# Preview template:
+#   docker-compose run --rm blast preview
+#
+# Lihat laporan terakhir:
+#   docker-compose run --rm blast report
