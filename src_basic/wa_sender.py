@@ -138,6 +138,7 @@ class WASender:
 
         try:
             self._page.goto(url, timeout=config.WA_TIMEOUT_SECONDS * 1000)
+            time.sleep(2)  # Tunggu SPA WhatsApp Web transisi ke chat baru
 
             # Tunggu: apakah chat terbuka (kotak input muncul) atau ada modal error
             start_time = time.time()
@@ -154,6 +155,8 @@ class WASender:
                         pass
                         
                 if input_box:
+                    # Tunggu sebentar lagi untuk memastikan React sudah stabil
+                    time.sleep(1)
                     break
                     
                 # Cek jika ada modal yang muncul
