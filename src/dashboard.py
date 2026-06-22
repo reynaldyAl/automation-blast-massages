@@ -3,7 +3,7 @@ dashboard.py — Terminal UI menggunakan Rich untuk tampilan progress real-time
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 from rich.console import Console
 from rich.table import Table
@@ -16,6 +16,7 @@ from rich.text import Text
 from rich import box
 from rich.align import Align
 from rich.columns import Columns
+from rich.syntax import Syntax
 
 console = Console()
 
@@ -105,6 +106,70 @@ def print_dry_run_warning():
         "[dim]Tidak ada pesan yang akan dikirim. Mode ini hanya untuk preview.[/dim]",
         border_style="yellow",
     ))
+
+
+def print_dry_run_preview_table(peserta_list, engine):
+    """Tampilkan tabel preview lengkap semua peserta + isi pesan saat dry-run."""
+    print_section("📋 Dry-Run Preview — Detail Peserta & Pesan")
+
+    table = Table(
+        box=box.ROUNDED,
+        border_style="yellow",
+        show_header=True,
+        header_style="bold yellow",
+        show_lines=True,
+        padding=(0, 1),
+    )
+    table.add_column("#", style="dim", width=4, justify="right")
+    table.add_column("Nama Peserta", style="bold white", min_width=18)
+    table.add_column("No HP (Asli)", style="cyan", min_width=14)
+    table.add_column("No HP (Normal)", style="cyan dim", min_width=14)
+    table.add_column("WA",  justify="center", width=5)
+    table.add_column("SMS", justify="center", width=5)
+    table.add_column("Valid?", justify="center", width=7)
+    table.add_column("Preview Pesan (50 karakter pertama)", style="dim", min_width=40)
+
+    for p in peserta_list:
+        try:
+            msg = engine.render(nama_peserta=p.nama_peserta, nokapst=p.nokapst)
+            preview_msg = msg.replace("\n", " ")[:80] + ("…" if len(msg) > 80 else "")
+        except Exception as e:
+            preview_msg = f"[red]Error render: {e}[/red]"
+
+        valid_str = "[green]✓[/green]" if p.phone.is_valid else "[red]✗[/red]"
+        wa_str    = "[green]✓[/green]" if p.send_wa  else "[dim]—[/dim]"
+        sms_str   = "[green]✓[/green]" if p.send_sms else "[dim]—[/dim]"
+        hp_norm   = p.phone.normalized if p.phone.is_valid else f"[red]{p.phone.message[:20]}[/red]"
+
+        table.add_row(
+            str(p.nomor or p.row_index + 1),
+            p.nama_peserta,
+            p.nohp_original,
+            hp_norm,
+            wa_str,
+            sms_str,
+            valid_str,
+            preview_msg,
+        )
+
+    console.print(table)
+    console.print(f"\n  [dim]Total: {len(peserta_list)} peserta[/dim]")
+
+    # Tampilkan preview 1 pesan penuh sebagai contoh
+    if peserta_list:
+        first = peserta_list[0]
+        try:
+            full_msg = engine.render(nama_peserta=first.nama_peserta, nokapst=first.nokapst)
+            console.print()
+            console.print(Panel(
+                full_msg,
+                title=f"[bold yellow]📩 Contoh Pesan — {first.nama_peserta}[/bold yellow]",
+                border_style="yellow",
+                padding=(1, 2),
+            ))
+        except Exception:
+            pass
+    console.print()
 
 
 def print_resume_info(done_count: int):
