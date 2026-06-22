@@ -128,75 +128,114 @@ class WASender:
     def send(self, phone_e164: str, message: str) -> tuple[str, str, str]:
         """
         Kirim pesan WA ke nomor tertentu.
-        """
-        if self.dry_run:
-            return Status.SUCCESS, "", ""
 
-        # Kita TIDAK memasukkan teks ke URL lagi karena bisa memicu bug rendering WA.
-        # Cukup buka chat-nya saja.
+        Dry-run mode: Buka chat, ketik pesan, tapi TIDAK kirim (tidak tekan Enter).
+        Pesan dibersihkan setelah 2 detik agar bisa lanjut ke peserta berikutnya.
+        """
+        # Cukup buka chat-nya saja (teks di-type manual, bukan lewat URL param).
         url = f"https://web.whatsapp.com/send?phone={phone_e164}"
 
-        try:
-            self._page.goto(url, timeout=config.WA_TIMEOUT_SECONDS * 1000)
-            time.sleep(2)  # Tunggu SPA WhatsApp Web transisi ke chat baru
+        # Timeout polling terpisah dari timeout goto, agar loading halaman yang
+        # lambat tidak memotong jatah waktu deteksi kotak input.
+        POLL_TIMEOUT_SEC = max(config.WA_TIMEOUT_SECONDS, 60)
 
-            # Tunggu: apakah chat terbuka (kotak input muncul) atau ada modal error
+        try:
+            # Buka URL — tunggu DOM interactive (bukan networkidle agar tidak hang
+            # pada koneksi lambat yang terus-menerus melakukan polling WA)
+            self._page.goto(url, timeout=config.WA_TIMEOUT_SECONDS * 1000,
+                            wait_until="domcontentloaded")
+
+            # Tunggu network relatif tenang (maks 10 detik extra) sebelum polling
+            try:
+                self._page.wait_for_load_state("networkidle", timeout=10_000)
+            except Exception:
+                pass  # Tidak masalah jika masih ada request background
+
+            time.sleep(1.5)  # Jeda minimum agar React SPA sempat merender
+
+            # ── Polling: tunggu kotak input atau modal error ──────────────────
             start_time = time.time()
             input_box = None
-            
-            while time.time() - start_time < config.WA_TIMEOUT_SECONDS:
-                # Cek jika kotak input pesan sudah muncul (tanda chat siap)
+
+            while time.time() - start_time < POLL_TIMEOUT_SEC:
+                # Cek kotak input pesan (tanda chat terbuka dan siap)
                 for selector in self.SEL_MSG_INPUT.split(','):
                     try:
-                        input_box = self._page.query_selector(selector.strip())
-                        if input_box and input_box.is_visible():
+                        el = self._page.query_selector(selector.strip())
+                        if el and el.is_visible():
+                            input_box = el
                             break
                     except Exception:
                         pass
-                        
+
                 if input_box:
-                    # Tunggu sebentar lagi untuk memastikan React sudah stabil
-                    time.sleep(1)
+                    time.sleep(1)  # Beri React sedikit waktu stabil
                     break
-                    
-                # Cek jika ada modal yang muncul
+
+                # Cek modal error (nomor tidak valid / tidak di WA)
                 invalid_modal = self._page.query_selector(self.SEL_INVALID_PHONE)
                 if invalid_modal:
                     modal_text = invalid_modal.inner_text().lower()
-                    # ABAIKAN modal loading "starting chat" atau "memulai chat"
-                    if "starting chat" not in modal_text and "memulai chat" not in modal_text and modal_text.strip():
+                    # Abaikan overlay loading "Starting chat" / "Memulai chat"
+                    if ("starting chat" not in modal_text
+                            and "memulai chat" not in modal_text
+                            and modal_text.strip()):
                         screenshot = self._take_screenshot(phone_e164, "not_on_wa")
-                        if "invalid" in modal_text or "phone number" in modal_text or "tidak valid" in modal_text:
-                            return Status.INVALID_PHONE, f"Nomor tidak valid di WA: {modal_text[:80].replace(chr(10), ' ')}", screenshot
-                        return Status.NOT_ON_WA, f"Nomor tidak terdaftar di WA: {modal_text[:80].replace(chr(10), ' ')}", screenshot
-                
-                self._page.wait_for_timeout(500) # Tunggu 500ms
+                        if ("invalid" in modal_text
+                                or "phone number" in modal_text
+                                or "tidak valid" in modal_text):
+                            return (Status.INVALID_PHONE,
+                                    f"Nomor tidak valid di WA: {modal_text[:80].replace(chr(10), ' ')}",
+                                    screenshot)
+                        return (Status.NOT_ON_WA,
+                                f"Nomor tidak terdaftar di WA: {modal_text[:80].replace(chr(10), ' ')}",
+                                screenshot)
+
+                self._page.wait_for_timeout(600)  # Poll setiap 600ms
             else:
                 screenshot = self._take_screenshot(phone_e164, "timeout")
-                return Status.FAILED, "Timeout menunggu WA Web merespons", screenshot
+                return Status.FAILED, "Timeout menunggu kotak input WA Web muncul", screenshot
 
-            # KETIK PESAN SECARA VIRTUAL!
-            # Ini sangat solid karena persis seperti manusia mengetik
-            # Beri jeda 1 detik agar animasi loading chat WA benar-benar selesai sebelum mengetik
-            time.sleep(1)
-            
-            input_box.click()
+            # ── Ketik pesan ──────────────────────────────────────────────────
+            # Klik input box, pastikan fokus masuk sebelum mengetik
             time.sleep(0.5)
-            
-            # Kita bersihkan dulu (siapa tahu ada sisa draf)
+            input_box.click()
+            time.sleep(0.8)
+
+            # Klik sekali lagi jika elemen belum terfokus (kondisi race WA SPA)
+            try:
+                if not self._page.evaluate(
+                    "el => el === document.activeElement || el.contains(document.activeElement)",
+                    input_box
+                ):
+                    input_box.click()
+                    time.sleep(0.5)
+            except Exception:
+                pass
+
+            # Bersihkan isi kotak (buang draft lama jika ada)
             self._page.keyboard.press("Control+A")
             self._page.keyboard.press("Backspace")
-            
-            # Paste/fill pesannya menggunakan insert_text (seperti Ctrl+V)
-            self._page.keyboard.insert_text(message)
-            time.sleep(1) # Beri waktu sedikit agar React merender teksnya
-            
-            # Tekan Enter
-            self._page.keyboard.press("Enter")
+            time.sleep(0.3)
 
-            # Tunggu sebentar untuk konfirmasi pesan terkirim
-            time.sleep(1.5)
-            return Status.SUCCESS, "", ""
+            # Tempelkan pesan (insert_text = paste tanpa trigger clipboard WA)
+            self._page.keyboard.insert_text(message)
+            time.sleep(1.2)  # Tunggu React merender teks sebelum aksi selanjutnya
+
+            if self.dry_run:
+                # ── DRY RUN: tampilkan pesan di kotak, tapi JANGAN kirim ──────
+                # Beri waktu user melihat preview pesan di browser
+                time.sleep(2.5)
+                # Bersihkan input agar tidak tertinggal draft
+                self._page.keyboard.press("Control+A")
+                self._page.keyboard.press("Backspace")
+                return Status.SUCCESS, "[DRY RUN] Pesan ditampilkan, tidak dikirim", ""
+            else:
+                # ── REAL: kirim pesan ─────────────────────────────────────────
+                self._page.keyboard.press("Enter")
+                # Tunggu sebentar untuk memastikan pesan terkirim (centang muncul)
+                time.sleep(2.0)
+                return Status.SUCCESS, "", ""
 
         except PWTimeout as e:
             screenshot = self._take_screenshot(phone_e164, "timeout")
