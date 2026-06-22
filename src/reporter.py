@@ -49,6 +49,7 @@ class SendResult:
     wa_screenshot: str = ""
     sms_status: str = Status.SKIPPED
     sms_error: str = ""
+    failure_reason: str = ""   # Alasan gagal gabungan (diisi otomatis oleh Reporter.record)
     timestamp: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     retry_count: int = 0
 
@@ -61,6 +62,7 @@ class Reporter:
         "nohp_original", "nohp_normalized", "phone_valid",
         "wa_status", "wa_error", "wa_screenshot",
         "sms_status", "sms_error",
+        "failure_reason",
         "timestamp", "retry_count",
     ]
 
@@ -79,6 +81,25 @@ class Reporter:
 
     def record(self, result: SendResult):
         """Catat hasil pengiriman dan append ke CSV secara langsung (real-time)."""
+        # Otomatis isi failure_reason dari error yang paling informatif
+        if not result.failure_reason:
+            reasons = []
+            # WA
+            if result.wa_status == Status.INVALID_PHONE:
+                reasons.append(f"[WA] Nomor tidak valid: {result.wa_error or 'format salah'}")
+            elif result.wa_status == Status.NOT_ON_WA:
+                reasons.append(f"[WA] Nomor tidak terdaftar di WhatsApp")
+            elif result.wa_status == Status.FAILED:
+                reasons.append(f"[WA] Gagal kirim: {result.wa_error or 'error tidak diketahui'}")
+            # SMS
+            if result.sms_status == Status.INVALID_PHONE:
+                reasons.append(f"[SMS] Nomor tidak valid: {result.sms_error or 'format salah'}")
+            elif result.sms_status == Status.NO_DEVICE:
+                reasons.append(f"[SMS] Perangkat Android tidak terdeteksi")
+            elif result.sms_status == Status.FAILED:
+                reasons.append(f"[SMS] Gagal kirim: {result.sms_error or 'error tidak diketahui'}")
+            result.failure_reason = " | ".join(reasons)
+
         self._results.append(result)
         self._append_to_csv(result)
 
