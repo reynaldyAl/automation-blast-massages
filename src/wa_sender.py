@@ -94,36 +94,35 @@ class WASender:
 
         print("\n  [WA] Menunggu WhatsApp Web siap...")
         print("  [WA] Jika belum login, silakan scan QR code di browser.")
+        print("  [WA] (Menunggu tanpa batas — proses akan lanjut setelah WA Web terload)")
 
-        # Tunggu loading selesai (bisa muncul QR atau langsung chat list jika sudah login)
-        try:
-            # Wait for either the QR code canvas or the main chat window
-            element = self._page.wait_for_selector(
-                'canvas, [data-testid="chat-list"], #side',
-                timeout=60_000  # 1 menit nunggu loading
+        # Tunggu loading selesai tanpa batas waktu (timeout=0 = no timeout di Playwright)
+        # Bisa muncul QR atau langsung chat list jika sudah login
+        element = self._page.wait_for_selector(
+            'canvas, [data-testid="chat-list"], #side',
+            timeout=0  # Tanpa batas — tunggu sampai elemen benar-benar muncul
+        )
+
+        # Jika yang muncul adalah canvas, berarti WA minta scan QR
+        if element and element.evaluate("el => el.tagName.toLowerCase()") == "canvas":
+            # Beri sedikit waktu agar QR dirender sempurna
+            time.sleep(1)
+            qr_path = config.SCREENSHOT_DIR / "qr_login.png"
+            self._page.screenshot(path=str(qr_path))
+            print(f"  [WA] 📸 Screenshot layar login disimpan ke: {qr_path}")
+            print("  [WA] Buka file gambar tersebut (di komputer Anda) untuk men-scan QR Code!")
+            print("  [WA] Menunggu QR di-scan... (tidak ada batas waktu)")
+
+            # Tunggu user scan QR sampai chat list muncul — tanpa batas waktu
+            self._page.wait_for_selector(
+                '#side, [data-testid="chat-list"]',
+                timeout=0  # Tanpa batas — tunggu sampai berhasil login
             )
-            
-            # Jika yang muncul adalah canvas, berarti minta QR
-            if element and element.evaluate("el => el.tagName.toLowerCase()") == "canvas":
-                # Beri sedikit waktu agar QR dirender sempurna
-                time.sleep(1)
-                qr_path = config.SCREENSHOT_DIR / "qr_login.png"
-                self._page.screenshot(path=str(qr_path))
-                print(f"  [WA] 📸 Screenshot layar login disimpan ke: {qr_path}")
-                print("  [WA] Buka file gambar tersebut (di komputer Anda) untuk men-scan QR Code!")
-                
-                # Sekarang tunggu user scan QR sampai chat list muncul
-                self._page.wait_for_selector(
-                    '#side, [data-testid="chat-list"]',
-                    timeout=120_000,  # 2 menit untuk scan QR
-                )
-                
-                if qr_path.exists():
-                    qr_path.unlink()
-                    
-            print("  [WA] ✓ WhatsApp Web siap!\n")
-        except PWTimeout:
-            raise WAError("Timeout menunggu login WA Web. Pastikan koneksi internet stabil dan QR di-scan tepat waktu.")
+
+            if qr_path.exists():
+                qr_path.unlink()
+
+        print("  [WA] ✓ WhatsApp Web siap!\n")
 
     def send(self, phone_e164: str, message: str) -> tuple[str, str, str]:
         """
