@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from config import config
+from csv_handler import Peserta
 
 # ─── Setup logging ke file ────────────────────────────────────────────────────
 log_formatter = logging.Formatter("[%(asctime)s] %(levelname)s — %(message)s", "%Y-%m-%d %H:%M:%S")
@@ -68,10 +69,38 @@ class Reporter:
 
     def __init__(self):
         config.ensure_dirs()
+        self.done_dir = config.REPORT_DIR / "done"
+        self._done_file_inited = False
+        
         self._results: List[SendResult] = []
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.report_path = config.REPORT_DIR / f"report_{ts}.csv"
+        self.done_path = self.done_dir / f"report_done_{ts}.csv"
+        
         self._init_report_file()
+
+    def record_success(self, peserta: Peserta):
+        """Pindahkan/salin data mentah peserta yang sukses ke CSV done."""
+        done_columns = ["nomor", "nama_peserta", "nokapst", "nohp", "nominal_tunggakan", "send_wa", "send_sms"]
+        
+        if not self._done_file_inited:
+            self.done_dir.mkdir(parents=True, exist_ok=True)
+            with open(self.done_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=done_columns)
+                writer.writeheader()
+            self._done_file_inited = True
+        row = {
+            "nomor": peserta.nomor if peserta.nomor else "",
+            "nama_peserta": peserta.nama_peserta,
+            "nokapst": peserta.nokapst,
+            "nohp": peserta.nohp_original,
+            "nominal_tunggakan": peserta.nominal_tunggakan if peserta.nominal_tunggakan else "",
+            "send_wa": str(peserta.send_wa).upper(),
+            "send_sms": str(peserta.send_sms).upper()
+        }
+        with open(self.done_path, "a", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=done_columns)
+            writer.writerow(row)
 
     def _init_report_file(self):
         """Buat file CSV dan tulis header."""
