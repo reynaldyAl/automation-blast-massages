@@ -5,7 +5,15 @@ template_engine.py — Render template pesan Jinja2
 import datetime
 from pathlib import Path
 from typing import Optional
+import re
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound, TemplateError
+
+def strip_whatsapp_formatting(text: str) -> str:
+    """Hapus format markdown WhatsApp (*bold*, _italic_, ~strikethrough~)."""
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    text = re.sub(r'\_(.*?)\_', r'\1', text)
+    text = re.sub(r'\~(.*?)\~', r'\1', text)
+    return text
 
 
 def get_salam() -> str:
@@ -40,11 +48,14 @@ class TemplateEngine:
             lstrip_blocks=False,
         )
 
+
+
     def render(
         self,
         nama_peserta: str,
         nokapst: str,
         nominal_tunggakan: Optional[str] = None,
+        strip_markdown: bool = False,
         **extra_vars,
     ) -> str:
         """
@@ -54,6 +65,7 @@ class TemplateEngine:
             nama_peserta: Nama peserta (kapital)
             nokapst: Nomor kartu JKN-KIS
             nominal_tunggakan: Nominal tunggakan (opsional, mis. "Rp210,000")
+            strip_markdown: Hapus format WhatsApp (*bold*, _italic_) untuk SMS
             **extra_vars: Variabel tambahan opsional
 
         Returns:
@@ -69,13 +81,16 @@ class TemplateEngine:
             raise FileNotFoundError(f"Template tidak ditemukan: {self.template_file}")
 
         try:
-            return template.render(
+            msg = template.render(
                 nama_peserta=nama_peserta,
                 nokapst=nokapst,
                 nominal_tunggakan=nominal_tunggakan,
                 salam=get_salam(),
                 **extra_vars,
             )
+            if strip_markdown:
+                return strip_whatsapp_formatting(msg)
+            return msg
         except TemplateError as e:
             raise ValueError(f"Error render template: {e}")
 
