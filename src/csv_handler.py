@@ -11,7 +11,7 @@ from phone_validator import normalize_phone, PhoneResult, PhoneStatus
 
 
 REQUIRED_COLUMNS = {"nama_peserta", "nokapst", "nohp"}
-OPTIONAL_COLUMNS = {"send_wa", "send_sms", "nomor"}
+OPTIONAL_COLUMNS = {"send_wa", "send_sms", "nomor", "nominal_tunggakan"}
 
 
 @dataclass
@@ -25,6 +25,7 @@ class Peserta:
     phone: PhoneResult
     send_wa: bool = True
     send_sms: bool = True
+    nominal_tunggakan: Optional[str] = None  # Opsional — dari kolom nominal_tunggakan CSV
 
 
 @dataclass
@@ -112,6 +113,12 @@ def load_csv(csv_path: Path) -> CSVLoadResult:
         except (ValueError, TypeError):
             nomor = None
 
+        # Baca nominal_tunggakan (opsional) — None jika kolom tidak ada atau kosong
+        raw_nominal = row.get("nominal_tunggakan", None)
+        if raw_nominal is not None:
+            raw_nominal = str(raw_nominal).strip()
+        nominal_tunggakan = raw_nominal if raw_nominal and raw_nominal.lower() != "nan" else None
+
         peserta = Peserta(
             row_index=int(idx),
             nomor=nomor,
@@ -121,6 +128,7 @@ def load_csv(csv_path: Path) -> CSVLoadResult:
             phone=phone_result,
             send_wa=send_wa,
             send_sms=send_sms,
+            nominal_tunggakan=nominal_tunggakan,
         )
         result.peserta_list.append(peserta)
         result.valid_rows += 1
