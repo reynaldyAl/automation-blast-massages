@@ -31,58 +31,69 @@ echo  ------------------------------------------------
 echo   [1] Kirim semua pesan  (WA + SMS)
 echo   [2] WhatsApp only
 echo   [3] SMS only
-echo   [4] Dry-run preview    (tidak ada yg terkirim)
-echo   [5] Validasi CSV + Config
-echo   [6] Preview template pesan
-echo   [7] Lihat laporan terakhir
-echo   [8] Generate pesan blast (konfirmasi per nomor)
-echo   [9] Hapus Sesi WhatsApp (Log Out / Ganti Nomor)
+echo   [4] Dry-run preview WA
+echo   [5] Dry-run preview SMS
+echo   [6] Validasi CSV + Config
+echo   [7] Preview template pesan
+echo   [8] Lihat laporan terakhir
+echo   [9] Generate pesan blast WA
+echo   [10] Generate pesan blast SMS
+echo   [11] Hapus Sesi WhatsApp (Log Out)
 echo   [0] Keluar
 echo  ------------------------------------------------
 echo.
-set /p PILIHAN=  Masukkan pilihan [0-9]: 
+set /p PILIHAN=  Masukkan pilihan: 
 
 if "%PILIHAN%"=="1" goto RUN_ALL
 if "%PILIHAN%"=="2" goto RUN_WA
 if "%PILIHAN%"=="3" goto RUN_SMS
-if "%PILIHAN%"=="4" goto DRY_RUN
-if "%PILIHAN%"=="5" goto VALIDATE
-if "%PILIHAN%"=="6" goto PREVIEW
-if "%PILIHAN%"=="7" goto REPORT
-if "%PILIHAN%"=="8" goto GENERATE
-if "%PILIHAN%"=="9" goto LOGOUT
+if "%PILIHAN%"=="4" goto DRY_RUN_WA
+if "%PILIHAN%"=="5" goto DRY_RUN_SMS
+if "%PILIHAN%"=="6" goto VALIDATE
+if "%PILIHAN%"=="7" goto PREVIEW
+if "%PILIHAN%"=="8" goto REPORT
+if "%PILIHAN%"=="9" goto GENERATE_WA
+if "%PILIHAN%"=="10" goto GENERATE_SMS
+if "%PILIHAN%"=="11" goto LOGOUT
 if "%PILIHAN%"=="0" goto EXIT
 
 echo.
-echo  [!] Pilihan tidak valid. Masukkan angka 0 sampai 9.
+echo  [!] Pilihan tidak valid. Masukkan angka pilihan yang benar.
 goto MENU
 
 :RUN_ALL
 echo.
-echo  [->] Mengirim semua pesan (WA + SMS)...
+echo  [-^>] Mengirim semua pesan (WA + SMS)...
 echo.
 python src\main.py run
 goto DONE
 
 :RUN_WA
 echo.
-echo  [->] Mengirim via WhatsApp saja...
+echo  [-^>] Mengirim via WhatsApp saja...
 echo.
 python src\main.py run --wa-only
 goto DONE
 
 :RUN_SMS
 echo.
-echo  [->] Mengirim via SMS saja...
+echo  [-^>] Mengirim via SMS saja...
 echo.
 python src\main.py run --sms-only
 goto DONE
 
-:DRY_RUN
+:DRY_RUN_WA
 echo.
-echo  [->] Mode DRY-RUN - preview visual tanpa kirim...
+echo  [-^>] Mode DRY-RUN WA - preview visual tanpa kirim...
 echo.
 python src\main.py run --dry-run --wa-only
+goto DONE
+
+:DRY_RUN_SMS
+echo.
+echo  [-^>] Mode DRY-RUN SMS - preview di HP Android tanpa kirim...
+echo.
+python src\main.py run --dry-run --sms-only
 goto DONE
 
 :VALIDATE
@@ -100,11 +111,18 @@ echo.
 python src\main.py report
 goto DONE
 
-:GENERATE
+:GENERATE_WA
 echo.
-echo  [->] Generate pesan blast per nomor dari CSV...
+echo  [-^>] Generate pesan blast WA per nomor dari CSV...
 echo.
-python src\main.py generate
+python src\main.py generate --channel wa
+goto DONE
+
+:GENERATE_SMS
+echo.
+echo  [-^>] Generate pesan blast SMS per nomor dari CSV...
+echo.
+python src\main.py generate --channel sms
 goto DONE
 
 :LOGOUT
