@@ -12,7 +12,18 @@ screenshots/
 .state.json
 
 # Reports output
-data/reports/
+data/reports/*
+!data/reports/.gitkeep
+!data/reports/done/
+data/reports/done/*
+!data/reports/done/.gitkeep
+
+# Generated messages output
+templates/messages/*
+!templates/messages/.gitkeep
+
+# Backup files
+data/input_backup.csv
 
 # Python
 __pycache__/
@@ -48,3 +59,6 @@ logs/
 .dockerenv
 
 window_dump.xml
+
+# CSV Data
+CSV/

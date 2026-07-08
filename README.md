@@ -55,7 +55,7 @@ Setiap kali ingin mengirim pesan, lakukan ini:
 2. **Double-click** file `run.bat`
 3. Jendela Command Prompt akan terbuka dan menampilkan menu:
 
-```
+```text
 ================================================
  BPJS BLAST MESSAGE AUTOMATION SYSTEM
  BPJS Kesehatan - Kantor Cabang Serang
@@ -64,17 +64,21 @@ Setiap kali ingin mengirim pesan, lakukan ini:
 ------------------------------------------------
  Pilih mode pengiriman:
 ------------------------------------------------
- [1] Kirim semua pesan  (WA + SMS)
- [2] WhatsApp only
- [3] SMS only
- [4] Dry-run preview    (tidak ada yg terkirim)
- [5] Validasi CSV + Config
- [6] Preview template pesan
- [7] Lihat laporan terakhir
- [0] Keluar
+  [1] Kirim semua pesan  (WA + SMS)
+  [2] WhatsApp only
+  [3] SMS only
+  [4] Dry-run preview WA
+  [5] Dry-run preview SMS
+  [6] Validasi CSV + Config
+  [7] Preview template pesan
+  [8] Lihat laporan terakhir
+  [9] Generate pesan blast WA
+  [10] Generate pesan blast SMS
+  [11] Hapus Sesi WhatsApp (Log Out)
+  [0] Keluar
 ------------------------------------------------
 
-  Masukkan pilihan [0-7]:
+  Masukkan pilihan:
 ```
 
 4. Ketik angka pilihan lalu tekan **Enter**
@@ -176,11 +180,15 @@ venv\Scripts\python.exe src\main.py run
 | [1] | `python src/main.py run` | Kirim WA + SMS sekaligus |
 | [2] | `python src/main.py run --wa-only` | Hanya WhatsApp |
 | [3] | `python src/main.py run --sms-only` | Hanya SMS |
-| [4] | `python src/main.py run --dry-run` | Preview visual, tidak kirim |
-| [5] | `python src/main.py validate` | Validasi CSV & config |
-| [6] | `python src/main.py preview` | Preview template pesan |
-| [7] | `python src/main.py report` | Lihat laporan terakhir |
-| — | `python src/main.py run --fresh` | Reset & mulai dari awal |
+| [4] | `python src/main.py run --dry-run --wa-only` | Preview visual WA, tidak kirim |
+| [5] | `python src/main.py run --dry-run --sms-only` | Preview visual SMS di HP, tidak kirim |
+| [6] | `python src/main.py validate` | Validasi CSV & config |
+| [7] | `python src/main.py preview` | Preview template pesan |
+| [8] | `python src/main.py report` | Lihat laporan terakhir |
+| [9] | `python src/main.py generate --channel wa` | Generate daftar pesan WA per nomor |
+| [10] | `python src/main.py generate --channel sms` | Generate daftar pesan SMS per nomor |
+| [11] | (Hapus folder `wa_profile`) | Reset / Log out sesi WhatsApp |
+| — | `python src/main.py run --fresh` | Reset resume state & mulai dari awal |
 
 > 💡 Saat menggunakan terminal di IDE, ganti `python` dengan `venv\Scripts\python.exe` agar menggunakan versi yang benar.
 
