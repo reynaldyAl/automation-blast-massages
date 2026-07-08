@@ -141,6 +141,20 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
         console.print("  [cyan]↺ State direset, mulai dari awal.[/cyan]\n")
     elif state.done_count > 0:
         print_resume_info(state.done_count)
+        from rich.prompt import Prompt
+        pilihan = Prompt.ask(
+            "\n  [bold]Lanjutkan (resume) pengiriman sebelumnya?[/bold]\n"
+            "  Ketik [green]y[/green] = Lanjutkan (Resume)\n"
+            "  Ketik [red]n[/red] = Ulang dari awal (Reset)",
+            choices=["y", "n"],
+            default="y"
+        ).strip().lower()
+        
+        if pilihan == "n":
+            state.clear()
+            console.print("\n  [cyan]↺ State direset, mulai ulang dari baris pertama.[/cyan]\n")
+        else:
+            console.print("\n  [green]▶ Melanjutkan proses...[/green]\n")
 
     # ── Init sender & reporter ────────────────────────────────────────────────
     reporter = Reporter()
@@ -206,10 +220,16 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
 
             # Render pesan — pilih template otomatis berdasarkan ada/tidaknya nominal
             _engine = _get_engine(tpl_file, peserta)
-            message = _engine.render(
+            message_wa = _engine.render(
                 nama_peserta=peserta.nama_peserta,
                 nokapst=peserta.nokapst,
                 nominal_tunggakan=peserta.nominal_tunggakan,
+            )
+            message_sms = _engine.render(
+                nama_peserta=peserta.nama_peserta,
+                nokapst=peserta.nokapst,
+                nominal_tunggakan=peserta.nominal_tunggakan,
+                strip_markdown=True,
             )
 
             progress.update(task_id, description=f"Mengirim: [cyan]{peserta.nama_peserta}[/cyan]")
@@ -218,7 +238,7 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
             if send_wa and peserta.send_wa:
                 wa_status, wa_error, wa_screenshot = wa.send(
                     phone_e164=peserta.phone.wa_format,
-                    message=message,
+                    message=message_wa,
                 )
                 result.wa_status    = wa_status
                 result.wa_error     = wa_error
@@ -231,7 +251,7 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
             if send_sms and peserta.send_sms:
                 sms_status, sms_error = sms.send(
                     phone_display=peserta.phone.display_format,
-                    message=message,
+                    message=message_sms,
                 )
                 result.sms_status = sms_status
                 result.sms_error  = sms_error
@@ -265,10 +285,16 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
 
             for peserta in retry_list:
                 _engine = _get_engine(tpl_file, peserta)
-                message = _engine.render(
+                message_wa = _engine.render(
                     nama_peserta=peserta.nama_peserta,
                     nokapst=peserta.nokapst,
                     nominal_tunggakan=peserta.nominal_tunggakan,
+                )
+                message_sms = _engine.render(
+                    nama_peserta=peserta.nama_peserta,
+                    nokapst=peserta.nokapst,
+                    nominal_tunggakan=peserta.nominal_tunggakan,
+                    strip_markdown=True,
                 )
                 retry_result = SendResult(
                     row_index       = peserta.row_index,
@@ -282,13 +308,13 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
                 )
 
                 if send_wa and peserta.send_wa:
-                    wa_status, wa_err, wa_ss = wa.send(peserta.phone.wa_format, message)
+                    wa_status, wa_err, wa_ss = wa.send(peserta.phone.wa_format, message_wa)
                     retry_result.wa_status    = wa_status
                     retry_result.wa_error     = wa_err
                     retry_result.wa_screenshot = wa_ss
 
                 if send_sms and peserta.send_sms:
-                    sms_status, sms_err = sms.send(peserta.phone.display_format, message)
+                    sms_status, sms_err = sms.send(peserta.phone.display_format, message_sms)
                     retry_result.sms_status = sms_status
                     retry_result.sms_error  = sms_err
 
@@ -549,7 +575,8 @@ def report(show_all, page_size):
 @click.option("--csv",      "csv_path", default=None, help="Path CSV input (langsung pakai, skip menu pilihan)")
 @click.option("--output",   "out_path", default=None,
               help="Path file output (default: templates/messages/messages.txt)")
-def generate(tpl_path, csv_path, out_path):
+@click.option("--channel",  "channel",  default=None, type=click.Choice(["wa", "sms"]), help="Pilih format untuk WA atau SMS")
+def generate(tpl_path, csv_path, out_path, channel):
     """Generate pesan blast per nomor dari CSV dengan konfirmasi interaktif.
 
     Untuk setiap baris CSV, menampilkan pratinjau pesan lengkap dan menanyakan
@@ -564,6 +591,17 @@ def generate(tpl_path, csv_path, out_path):
 
     print_banner()
     print_section("✏️  Generate Pesan Blast (Konfirmasi Per Nomor)")
+
+    if not channel:
+        channel = Prompt.ask(
+            "  [bold]Pilih format pesan yang akan di-generate:[/bold]\n"
+            "  Ketik [green]wa[/green] = WhatsApp (dengan format *bold*)\n"
+            "  Ketik [cyan]sms[/cyan] = SMS (tanpa format bintang/markdown)",
+            choices=["wa", "sms"],
+            default="wa",
+        ).strip().lower()
+
+    is_sms = (channel == "sms")
 
     # (Resolve template & output dilakukan setelah CSV dipilih)
 
@@ -636,7 +674,8 @@ def generate(tpl_path, csv_path, out_path):
         msg_dir.mkdir(parents=True, exist_ok=True)
         # Gunakan nama CSV ditambah timestamp agar file baru selalu terbuat setiap kali generate
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = msg_dir / f"messages_{csv_file.stem}_{ts}.txt"
+        suffix = "_sms" if is_sms else "_wa"
+        output_file = msg_dir / f"messages_{csv_file.stem}{suffix}_{ts}.txt"
 
     # ── Load CSV ──────────────────────────────────────────────────────────────
     csv_result = load_csv(csv_file)
@@ -688,6 +727,7 @@ def generate(tpl_path, csv_path, out_path):
             nama_peserta=peserta.nama_peserta,
             nokapst=peserta.nokapst,
             nominal_tunggakan=peserta.nominal_tunggakan,
+            strip_markdown=is_sms,
         )
 
         # ── Info header ───────────────────────────────────────────────────────
@@ -754,12 +794,13 @@ def generate(tpl_path, csv_path, out_path):
             generate_all = True
 
         # ── Tulis / append ke file output ─────────────────────────────────────
+        wa_link = f" (https://wa.me/{peserta.phone.wa_format})" if not is_sms and peserta.phone.is_valid else ""
         separator = (
             "=" * 60 + "\n"
             + f"# Nomor   : {peserta.nomor or idx}\n"
             + f"# Nama    : {peserta.nama_peserta}\n"
             + f"# NOKAPST : {peserta.nokapst}\n"
-            + f"# No HP   : {peserta.nohp_original}\n"
+            + f"# No HP   : {peserta.nohp_original}{wa_link}\n"
             + (f"# Nominal : {peserta.nominal_tunggakan}\n" if peserta.nominal_tunggakan else "")
             + f"# Waktu   : {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
             + "=" * 60 + "\n"
