@@ -49,7 +49,7 @@ def load_csv(csv_path: Path) -> CSVLoadResult:
 
     # --- Baca file ---
     try:
-        df = pd.read_csv(csv_path, dtype=str)
+        df = pd.read_csv(csv_path, dtype=str, sep=None, engine='python')
     except FileNotFoundError:
         result.errors.append(f"File CSV tidak ditemukan: {csv_path}")
         return result
