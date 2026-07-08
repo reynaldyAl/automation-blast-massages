@@ -108,7 +108,7 @@ def print_dry_run_warning():
     ))
 
 
-def print_dry_run_preview_table(peserta_list, engine):
+def print_dry_run_preview_table(peserta_list, engine, tpl_file=None, get_engine_fn=None):
     """Tampilkan tabel preview lengkap semua peserta + isi pesan saat dry-run."""
     print_section("📋 Dry-Run Preview — Detail Peserta & Pesan")
 
@@ -127,19 +127,26 @@ def print_dry_run_preview_table(peserta_list, engine):
     table.add_column("WA",  justify="center", width=5)
     table.add_column("SMS", justify="center", width=5)
     table.add_column("Valid?", justify="center", width=7)
-    table.add_column("Preview Pesan (50 karakter pertama)", style="dim", min_width=40)
+    table.add_column("Nominal", style="yellow", min_width=12)
+    table.add_column("Preview Pesan (80 karakter pertama)", style="dim", min_width=40)
 
     for p in peserta_list:
         try:
-            msg = engine.render(nama_peserta=p.nama_peserta, nokapst=p.nokapst)
+            _eng = get_engine_fn(tpl_file, p) if get_engine_fn and tpl_file else engine
+            msg = _eng.render(
+                nama_peserta=p.nama_peserta,
+                nokapst=p.nokapst,
+                nominal_tunggakan=p.nominal_tunggakan,
+            )
             preview_msg = msg.replace("\n", " ")[:80] + ("…" if len(msg) > 80 else "")
         except Exception as e:
             preview_msg = f"[red]Error render: {e}[/red]"
 
-        valid_str = "[green]✓[/green]" if p.phone.is_valid else "[red]✗[/red]"
-        wa_str    = "[green]✓[/green]" if p.send_wa  else "[dim]—[/dim]"
-        sms_str   = "[green]✓[/green]" if p.send_sms else "[dim]—[/dim]"
-        hp_norm   = p.phone.normalized if p.phone.is_valid else f"[red]{p.phone.message[:20]}[/red]"
+        valid_str   = "[green]✓[/green]" if p.phone.is_valid else "[red]✗[/red]"
+        wa_str      = "[green]✓[/green]" if p.send_wa  else "[dim]—[/dim]"
+        sms_str     = "[green]✓[/green]" if p.send_sms else "[dim]—[/dim]"
+        hp_norm     = p.phone.normalized if p.phone.is_valid else f"[red]{p.phone.message[:20]}[/red]"
+        nominal_str = p.nominal_tunggakan if p.nominal_tunggakan else "[dim]—[/dim]"
 
         table.add_row(
             str(p.nomor or p.row_index + 1),
@@ -149,6 +156,7 @@ def print_dry_run_preview_table(peserta_list, engine):
             wa_str,
             sms_str,
             valid_str,
+            nominal_str,
             preview_msg,
         )
 
@@ -159,7 +167,12 @@ def print_dry_run_preview_table(peserta_list, engine):
     if peserta_list:
         first = peserta_list[0]
         try:
-            full_msg = engine.render(nama_peserta=first.nama_peserta, nokapst=first.nokapst)
+            _eng = get_engine_fn(tpl_file, first) if get_engine_fn and tpl_file else engine
+            full_msg = _eng.render(
+                nama_peserta=first.nama_peserta,
+                nokapst=first.nokapst,
+                nominal_tunggakan=first.nominal_tunggakan,
+            )
             console.print()
             console.print(Panel(
                 full_msg,
@@ -170,6 +183,7 @@ def print_dry_run_preview_table(peserta_list, engine):
         except Exception:
             pass
     console.print()
+
 
 
 def print_resume_info(done_count: int):
