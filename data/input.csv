@@ -1,6 +1,1 @@
-nomor,nama_peserta,nokapst,nohp,send_wa,send_sms
-1,Grace Christin,0002223480115,082193675871,TRUE,TRUE
-2,Muflih Fikri,0001082332293,81237436175,TRUE,TRUE
-3,BUDI SANTOSO,0003345678901,085678234,TRUE,FALSE
-4,AHMAD FAUZI,0005567890123,0812345,FALSE,TRUE
-5,Mas Aldi Dipa,00055495849,082347744577,TRUE,TRUE
+nomor,nama_peserta,nokapst,nohp,nominal_tunggakan,send_wa,send_sms
