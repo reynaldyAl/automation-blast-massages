@@ -29,7 +29,7 @@ import click
 from rich.console import Console
 
 from config import config
-from csv_handler import load_csv
+from csv_handler import load_csv, Peserta
 from template_engine import TemplateEngine
 from wa_sender import WASender
 from sms_sender import SMSSender
@@ -41,6 +41,20 @@ from dashboard import (
     print_dry_run_preview_table,
 )
 from scheduler import start_scheduler
+
+
+# ─── Helper: pilih template engine berdasarkan ada/tidaknya nominal ────────────
+def _get_engine(tpl_file: Path, peserta: "Peserta") -> TemplateEngine:
+    """
+    Pilih template engine sesuai kondisi peserta:
+    - Ada nominal_tunggakan → pakai bpjs_message_nominal.txt (di folder yang sama)
+    - Tidak ada / kolom tidak ada → pakai template default
+    """
+    if peserta.nominal_tunggakan:
+        nominal_tpl = tpl_file.parent / "bpjs_message_nominal.txt"
+        if nominal_tpl.exists():
+            return TemplateEngine(nominal_tpl)
+    return TemplateEngine(tpl_file)
 
 
 # ─── CLI Group ────────────────────────────────────────────────────────────────
@@ -111,7 +125,11 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
 
     # ── Dry-run: tabel preview semua peserta ──────────────────────────────────
     if dry_run:
-        print_dry_run_preview_table(csv_result.peserta_list, engine)
+        print_dry_run_preview_table(
+            csv_result.peserta_list, engine,
+            tpl_file=tpl_file,
+            get_engine_fn=_get_engine,
+        )
 
     # ── Tampilkan summary config ──────────────────────────────────────────────
     print_config_summary(config, csv_result.valid_rows)
@@ -186,10 +204,12 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
                 state.mark_done(peserta.row_index, result.wa_status, result.sms_status)
                 continue
 
-            # Render pesan
-            message = engine.render(
+            # Render pesan — pilih template otomatis berdasarkan ada/tidaknya nominal
+            _engine = _get_engine(tpl_file, peserta)
+            message = _engine.render(
                 nama_peserta=peserta.nama_peserta,
                 nokapst=peserta.nokapst,
+                nominal_tunggakan=peserta.nominal_tunggakan,
             )
 
             progress.update(task_id, description=f"Mengirim: [cyan]{peserta.nama_peserta}[/cyan]")
@@ -222,6 +242,11 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
             # Catat hasil
             reporter.record(result)
             state.mark_done(peserta.row_index, result.wa_status, result.sms_status)
+            
+            # Jika pesan berhasil terkirim (WA atau SMS) dan bukan mode dry-run, catat ke laporan done
+            if not dry_run and (result.wa_status == Status.SUCCESS or result.sms_status == Status.SUCCESS):
+                reporter.record_success(peserta)
+
             print_send_result(
                 peserta.nama_peserta, peserta.phone.display_format,
                 result.wa_status, result.sms_status,
@@ -239,7 +264,12 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
             still_failing = []
 
             for peserta in retry_list:
-                message = engine.render(nama_peserta=peserta.nama_peserta, nokapst=peserta.nokapst)
+                _engine = _get_engine(tpl_file, peserta)
+                message = _engine.render(
+                    nama_peserta=peserta.nama_peserta,
+                    nokapst=peserta.nokapst,
+                    nominal_tunggakan=peserta.nominal_tunggakan,
+                )
                 retry_result = SendResult(
                     row_index       = peserta.row_index,
                     nomor           = peserta.nomor,
@@ -513,6 +543,268 @@ def report(show_all, page_size):
     console.print(f"\n  [dim]Selesai — {total} baris ditampilkan.[/dim]\n")
 
 
+# ─── generate command ─────────────────────────────────────────────────────────
+@cli.command()
+@click.option("--template", "tpl_path", default=None, help="Path template (override .env)")
+@click.option("--csv",      "csv_path", default=None, help="Path CSV input (langsung pakai, skip menu pilihan)")
+@click.option("--output",   "out_path", default=None,
+              help="Path file output (default: templates/messages/messages.txt)")
+def generate(tpl_path, csv_path, out_path):
+    """Generate pesan blast per nomor dari CSV dengan konfirmasi interaktif.
+
+    Untuk setiap baris CSV, menampilkan pratinjau pesan lengkap dan menanyakan
+    apakah pesan tersebut ingin di-generate. Pesan yang dikonfirmasi akan
+    di-append ke file output (satu file kumulatif).
+    """
+    import datetime
+    from rich.panel import Panel
+    from rich.prompt import Prompt
+    from rich import box as rich_box
+    from rich.table import Table
+
+    print_banner()
+    print_section("✏️  Generate Pesan Blast (Konfirmasi Per Nomor)")
+
+    # (Resolve template & output dilakukan setelah CSV dipilih)
+
+    # ── Pilih CSV: jika --csv tidak diberikan, tampilkan menu interaktif ───────
+    if csv_path:
+        csv_file = Path(csv_path)
+    else:
+        # Scan file .csv di data/ dan data/messages/
+        base_dir = config.INPUT_CSV.parent          # biasanya: data/
+        msg_dir  = base_dir / "messages"
+
+        csv_candidates = sorted(base_dir.glob("*.csv")) + sorted(msg_dir.glob("*.csv"))
+
+        if not csv_candidates:
+            console.print(
+                f"  [bold red]✗ Tidak ada file CSV ditemukan di:[/bold red]\n"
+                f"    • {base_dir}\n"
+                f"    • {msg_dir}\n"
+            )
+            return
+
+        if len(csv_candidates) == 1:
+            # Hanya satu file — langsung pakai
+            csv_file = csv_candidates[0]
+            console.print(
+                f"  [dim]CSV ditemukan (1 file):[/dim] [cyan]{csv_file}[/cyan]\n"
+            )
+        else:
+            # Tampilkan menu pilihan
+            console.print("  [bold]Pilih file CSV yang akan digunakan:[/bold]\n")
+            for i, f in enumerate(csv_candidates, start=1):
+                # Tampilkan path relatif agar lebih pendek
+                try:
+                    label = f.relative_to(base_dir.parent)
+                except ValueError:
+                    label = f
+                size_kb = f.stat().st_size / 1024
+                console.print(
+                    f"  [bold cyan][{i}][/bold cyan] {label}  "
+                    f"[dim]({size_kb:.1f} KB)[/dim]"
+                )
+            console.print()
+
+            while True:
+                try:
+                    raw = Prompt.ask(
+                        f"  Masukkan nomor CSV [1-{len(csv_candidates)}]",
+                        default="1",
+                    ).strip()
+                    idx_csv = int(raw)
+                    if 1 <= idx_csv <= len(csv_candidates):
+                        csv_file = csv_candidates[idx_csv - 1]
+                        break
+                    console.print(
+                        f"  [yellow]⚠ Masukkan angka antara 1 dan {len(csv_candidates)}.[/yellow]"
+                    )
+                except (ValueError, EOFError, KeyboardInterrupt):
+                    console.print("  [bold yellow]⚠ Dibatalkan.[/bold yellow]")
+                    return
+
+        console.print()
+
+    # ── Resolve template & output ──────────────────────────────────────────────
+    tpl_file = Path(tpl_path) if tpl_path else config.TEMPLATE_FILE
+
+    if out_path:
+        output_file = Path(out_path)
+    else:
+        msg_dir = Path(tpl_file).parent / "messages"
+        msg_dir.mkdir(parents=True, exist_ok=True)
+        # Gunakan nama CSV ditambah timestamp agar file baru selalu terbuat setiap kali generate
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = msg_dir / f"messages_{csv_file.stem}_{ts}.txt"
+
+    # ── Load CSV ──────────────────────────────────────────────────────────────
+    csv_result = load_csv(csv_file)
+    if csv_result.errors:
+        for e in csv_result.errors:
+            console.print(f"  [bold red]✗ CSV Error:[/bold red] {e}")
+        sys.exit(1)
+
+    peserta_list = csv_result.peserta_list
+    total        = len(peserta_list)
+
+    if total == 0:
+        console.print("  [yellow]⚠ Tidak ada data peserta di CSV.[/yellow]")
+        return
+
+    # Cek apakah template nominal tersedia
+    nominal_tpl = tpl_file.parent / "bpjs_message_nominal.txt"
+    has_nominal_tpl = nominal_tpl.exists()
+
+    # ── Buat direktori output jika belum ada ──────────────────────────────────
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    console.print(
+        f"  [dim]Template default :[/dim] [cyan]{tpl_file}[/cyan]\n"
+        + (
+            f"  [dim]Template nominal  :[/dim] [cyan]{nominal_tpl}[/cyan]\n"
+            if has_nominal_tpl else
+            f"  [dim]Template nominal  :[/dim] [yellow]tidak ditemukan (akan pakai default)[/yellow]\n"
+        )
+        + f"  [dim]CSV              :[/dim] [cyan]{csv_file}[/cyan]\n"
+        + f"  [dim]Output           :[/dim] [cyan]{output_file}[/cyan]\n"
+        + f"  [dim]Total data       :[/dim] [bold white]{total}[/bold white] peserta\n"
+    )
+    console.print(
+        "  Ketik [bold green]y[/bold green] = generate & simpan, "
+        "[bold red]n[/bold red] = skip, "
+        "[bold yellow]a[/bold yellow] = generate semua, "
+        "[bold magenta]q[/bold magenta] = keluar\n"
+    )
+
+    generated_count = 0
+    skipped_count   = 0
+    generate_all    = False
+
+    for idx, peserta in enumerate(peserta_list, start=1):
+        # ── Pilih engine & render pesan ───────────────────────────────────────
+        _engine = _get_engine(tpl_file, peserta)
+        message = _engine.render(
+            nama_peserta=peserta.nama_peserta,
+            nokapst=peserta.nokapst,
+            nominal_tunggakan=peserta.nominal_tunggakan,
+        )
+
+        # ── Info header ───────────────────────────────────────────────────────
+        console.rule(f"[bold cyan]Peserta {idx} / {total}[/bold cyan]")
+
+        # Info peserta (tabel ringkas)
+        info_table = Table(box=rich_box.SIMPLE, show_header=False, padding=(0, 2))
+        info_table.add_column("Label", style="dim")
+        info_table.add_column("Value", style="bold white")
+        info_table.add_row("Nomor",   str(peserta.nomor or idx))
+        info_table.add_row("Nama",    peserta.nama_peserta)
+        info_table.add_row("NOKAPST", peserta.nokapst)
+        info_table.add_row("No HP",   peserta.nohp_original)
+        info_table.add_row(
+            "Nominal Tunggakan",
+            f"[bold yellow]{peserta.nominal_tunggakan}[/bold yellow]"
+            if peserta.nominal_tunggakan else "[dim]—[/dim]"
+        )
+        info_table.add_row(
+            "Template Digunakan",
+            f"[green]nominal[/green]" if peserta.nominal_tunggakan and has_nominal_tpl
+            else "[dim]default[/dim]"
+        )
+        info_table.add_row(
+            "Status HP",
+            "[green]✓ Valid[/green]" if peserta.phone.is_valid else "[red]✗ Tidak Valid[/red]"
+        )
+        console.print(info_table)
+
+        # Preview pesan dalam panel
+        console.print(
+            Panel(
+                message,
+                title="[bold]Preview Pesan[/bold]",
+                border_style="cyan",
+                padding=(1, 2),
+            )
+        )
+
+        # ── Konfirmasi (skip jika generate_all aktif) ─────────────────────────
+        if generate_all:
+            pilihan = "y"
+        else:
+            try:
+                pilihan = Prompt.ask(
+                    f"  [bold]Generate pesan untuk [cyan]{peserta.nama_peserta}[/cyan]?[/bold]",
+                    choices=["y", "n", "a", "q"],
+                    default="y",
+                ).strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                console.print("\n  [bold yellow]⚠ Dibatalkan oleh pengguna.[/bold yellow]")
+                break
+
+        if pilihan == "q":
+            console.print("  [bold magenta]↩ Generate dihentikan.[/bold magenta]")
+            break
+
+        if pilihan == "n":
+            skipped_count += 1
+            console.print("  [dim]→ Di-skip.[/dim]\n")
+            continue
+
+        if pilihan == "a":
+            generate_all = True
+
+        # ── Tulis / append ke file output ─────────────────────────────────────
+        separator = (
+            "=" * 60 + "\n"
+            + f"# Nomor   : {peserta.nomor or idx}\n"
+            + f"# Nama    : {peserta.nama_peserta}\n"
+            + f"# NOKAPST : {peserta.nokapst}\n"
+            + f"# No HP   : {peserta.nohp_original}\n"
+            + (f"# Nominal : {peserta.nominal_tunggakan}\n" if peserta.nominal_tunggakan else "")
+            + f"# Waktu   : {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            + "=" * 60 + "\n"
+        )
+
+        with open(output_file, "a", encoding="utf-8") as f:
+            f.write(separator)
+            f.write(message.strip())
+            f.write("\n\n")
+
+        generated_count += 1
+        console.print(
+            f"  [bold green]✓ Disimpan![/bold green] "
+            f"[dim]({generated_count} pesan tersimpan sejauh ini)[/dim]\n"
+        )
+
+    # ── Ringkasan akhir ────────────────────────────────────────────────────────
+    console.rule("[bold]Selesai[/bold]")
+    console.print(
+        f"\n  [bold green]✓ {generated_count}[/bold green] pesan di-generate dan disimpan.\n"
+        f"  [dim]✗ {skipped_count} peserta di-skip.[/dim]\n"
+    )
+
+    if generated_count > 0:
+        console.print(
+            f"  [bold]📄 File output:[/bold] [underline cyan]{output_file.resolve()}[/underline cyan]\n"
+        )
+
+        # Tanya apakah mau buka file
+        try:
+            buka = Prompt.ask(
+                "  Buka file hasil generate sekarang?",
+                choices=["y", "n"],
+                default="n",
+            ).strip().lower()
+            if buka == "y":
+                import os
+                os.startfile(str(output_file.resolve()))
+        except Exception:
+            pass
+
+    console.print()
+
+
 # ─── Entry Point ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     cli()
+
