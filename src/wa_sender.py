@@ -54,7 +54,7 @@ class WASender:
         self._page = None
 
     def start(self):
-        """Buka browser dan muat profil WA (scan QR jika belum login)."""
+        """Buka browser dan muat profil WA (scan QR atau login nomor+kode jika belum login)."""
         if not PLAYWRIGHT_AVAILABLE:
             raise WAError(
                 "Playwright tidak terinstall.\n"
@@ -93,36 +93,176 @@ class WASender:
         self._page.goto("https://web.whatsapp.com", timeout=config.WA_TIMEOUT_SECONDS * 1000)
 
         print("\n  [WA] Menunggu WhatsApp Web siap...")
-        print("  [WA] Jika belum login, silakan scan QR code di browser.")
         print("  [WA] (Menunggu tanpa batas — proses akan lanjut setelah WA Web terload)")
 
-        # Tunggu loading selesai tanpa batas waktu (timeout=0 = no timeout di Playwright)
-        # Bisa muncul QR atau langsung chat list jika sudah login
+        # Tunggu loading: bisa muncul canvas (QR), chat-list (sudah login), atau intro screen
         element = self._page.wait_for_selector(
             'canvas, [data-testid="chat-list"], #side',
-            timeout=0  # Tanpa batas — tunggu sampai elemen benar-benar muncul
+            timeout=0  # Tanpa batas
         )
 
-        # Jika yang muncul adalah canvas, berarti WA minta scan QR
-        if element and element.evaluate("el => el.tagName.toLowerCase()") == "canvas":
-            # Beri sedikit waktu agar QR dirender sempurna
+        # Jika sudah login langsung (ada chat-list / #side), skip proses login
+        tag = element.evaluate("el => el.tagName.toLowerCase()") if element else ""
+        if tag != "canvas":
+            print("  [WA] ✓ WhatsApp Web siap!\n")
+            return
+
+        # ── Belum login: tampil QR / intro screen ─────────────────────────────
+        login_phone = getattr(config, "WA_LOGIN_PHONE", "").strip()
+
+        if login_phone:
+            # ── Mode: Login via Nomor + Kode (tanpa QR) ───────────────────────
+            print(f"\n  [WA] 📱 Mode login: Nomor telepon ({login_phone})")
+            print("  [WA] Mencari tombol 'Link with phone number'...")
+
+            # Tunggu tombol "Link with phone number" muncul
+            link_btn = None
+            for _ in range(30):  # Coba max 15 detik
+                for sel in [
+                    'button:has-text("Link with phone number")',
+                    'button:has-text("Tautkan dengan nomor telepon")',
+                    '[data-testid="link-device-phone-number-button"]',
+                    'span:text-is("Link with phone number")',
+                    'span:text-is("Tautkan dengan nomor telepon")',
+                ]:
+                    try:
+                        btn = self._page.query_selector(sel)
+                        if btn and btn.is_visible():
+                            link_btn = btn
+                            break
+                    except Exception:
+                        pass
+                if link_btn:
+                    break
+                self._page.wait_for_timeout(500)
+
+            if link_btn:
+                try:
+                    link_btn.click()
+                    time.sleep(1.5)
+                    print("  [WA] ✓ Tombol 'Link with phone number' diklik.")
+
+                    # Tunggu field input nomor muncul
+                    phone_input = None
+                    for _ in range(20):
+                        for sel in [
+                            'input[aria-label*="phone"]',
+                            'input[data-testid="phone-number-input"]',
+                            'input[type="tel"]',
+                            'input[placeholder*="phone"]',
+                            'input[aria-label*="nomor"]',
+                        ]:
+                            try:
+                                inp = self._page.query_selector(sel)
+                                if inp and inp.is_visible():
+                                    phone_input = inp
+                                    break
+                            except Exception:
+                                pass
+                        if phone_input:
+                            break
+                        self._page.wait_for_timeout(500)
+
+                    if phone_input:
+                        phone_input.click()
+                        time.sleep(0.5)
+                        # Bersihkan & isi nomor (format: 628xxxx tanpa +)
+                        phone_input.fill("")
+                        phone_input.type(login_phone, delay=80)
+                        time.sleep(0.5)
+                        print(f"  [WA] ✓ Nomor {login_phone} diisi.")
+
+                        # Klik tombol Next / Selanjutnya
+                        for sel in [
+                            'button:has-text("Next")',
+                            'button:has-text("Selanjutnya")',
+                            '[data-testid="link-device-phone-number-button"]',
+                            'button[type="submit"]',
+                        ]:
+                            try:
+                                nb = self._page.query_selector(sel)
+                                if nb and nb.is_visible():
+                                    nb.click()
+                                    break
+                            except Exception:
+                                pass
+
+                        time.sleep(2)
+
+                        # Ambil kode 8 digit yang muncul di layar
+                        code_text = ""
+                        for _ in range(30):  # Coba max 15 detik
+                            for sel in [
+                                '[data-testid="link-device-phone-number-code"]',
+                                'div[class*="landing-otp-code"]',
+                                'span[class*="otp-code"]',
+                                'div[class*="otp"]',
+                                '[aria-label*="code"]',
+                            ]:
+                                try:
+                                    el = self._page.query_selector(sel)
+                                    if el:
+                                        txt = el.inner_text().strip()
+                                        # Kode biasanya format: XXXX-XXXX atau 8 karakter
+                                        if txt and len(txt.replace("-", "").replace(" ", "")) >= 7:
+                                            code_text = txt
+                                            break
+                                except Exception:
+                                    pass
+                            if code_text:
+                                break
+                            self._page.wait_for_timeout(500)
+
+                        if code_text:
+                            print("\n" + "=" * 55)
+                            print("  [WA] 🔑 KODE LINK PERANGKAT:")
+                            print(f"\n         >>>  {code_text}  <<<\n")
+                            print("  Buka WhatsApp HP Anda:")
+                            print("  Menu (⋮) → Perangkat Tertaut → Tautkan Perangkat")
+                            print("  Masukkan kode di atas saat diminta.")
+                            print("=" * 55 + "\n")
+                        else:
+                            # Kode tidak terdeteksi otomatis — minta user lihat browser
+                            print("\n" + "=" * 55)
+                            print("  [WA] 🔑 Kode muncul di browser.")
+                            print("  Lihat browser, catat kode 8 digit yang tampil,")
+                            print("  lalu masukkan ke WhatsApp HP Anda:")
+                            print("  Menu (⋮) → Perangkat Tertaut → Tautkan Perangkat")
+                            print("=" * 55 + "\n")
+                    else:
+                        print("  [WA] ⚠ Field input nomor tidak ditemukan — lihat browser.")
+
+                except Exception as e:
+                    print(f"  [WA] ⚠ Gagal klik tombol login nomor: {e}")
+                    print("  [WA] Silakan lanjutkan manual di browser.")
+
+            else:
+                print("  [WA] ⚠ Tombol 'Link with phone number' tidak ditemukan.")
+                print("  [WA] Coba klik manual di browser atau gunakan QR.")
+
+        else:
+            # ── Mode default: QR Code ──────────────────────────────────────────
             time.sleep(1)
             qr_path = config.SCREENSHOT_DIR / "qr_login.png"
             self._page.screenshot(path=str(qr_path))
             print(f"  [WA] 📸 Screenshot layar login disimpan ke: {qr_path}")
             print("  [WA] Buka file gambar tersebut (di komputer Anda) untuk men-scan QR Code!")
-            print("  [WA] Menunggu QR di-scan... (tidak ada batas waktu)")
 
-            # Tunggu user scan QR sampai chat list muncul — tanpa batas waktu
-            self._page.wait_for_selector(
-                '#side, [data-testid="chat-list"]',
-                timeout=0  # Tanpa batas — tunggu sampai berhasil login
-            )
+        print("  [WA] Menunggu login selesai... (tidak ada batas waktu)")
+        # Tunggu sampai chat list muncul (login berhasil) — tanpa batas waktu
+        self._page.wait_for_selector(
+            '#side, [data-testid="chat-list"]',
+            timeout=0
+        )
 
-            if qr_path.exists():
-                qr_path.unlink()
+        # Hapus screenshot QR jika ada
+        qr_path_cleanup = config.SCREENSHOT_DIR / "qr_login.png"
+        if qr_path_cleanup.exists():
+            qr_path_cleanup.unlink()
 
         print("  [WA] ✓ WhatsApp Web siap!\n")
+
+
 
     def send(self, phone_e164: str, message: str) -> tuple[str, str, str]:
         """
@@ -175,6 +315,16 @@ class WASender:
                 invalid_modal = self._page.query_selector(self.SEL_INVALID_PHONE)
                 if invalid_modal:
                     modal_text = invalid_modal.inner_text().lower()
+
+                    # Jika ini popup "Apa yang baru", tutup dengan menekan Escape agar tidak menghalangi kotak input
+                    if "apa yang baru" in modal_text or "what's new" in modal_text:
+                        try:
+                            self._page.keyboard.press("Escape")
+                            time.sleep(1)
+                        except Exception:
+                            pass
+                        continue  # Lanjut polling input_box
+
                     # Abaikan overlay loading "Starting chat" / "Memulai chat"
                     if ("starting chat" not in modal_text
                             and "memulai chat" not in modal_text
