@@ -35,10 +35,12 @@ echo   [4] Dry-run preview    (tidak ada yg terkirim)
 echo   [5] Validasi CSV + Config
 echo   [6] Preview template pesan
 echo   [7] Lihat laporan terakhir
+echo   [8] Generate pesan blast (konfirmasi per nomor)
+echo   [9] Hapus Sesi WhatsApp (Log Out / Ganti Nomor)
 echo   [0] Keluar
 echo  ------------------------------------------------
 echo.
-set /p PILIHAN=  Masukkan pilihan [0-7]: 
+set /p PILIHAN=  Masukkan pilihan [0-9]: 
 
 if "%PILIHAN%"=="1" goto RUN_ALL
 if "%PILIHAN%"=="2" goto RUN_WA
@@ -47,10 +49,12 @@ if "%PILIHAN%"=="4" goto DRY_RUN
 if "%PILIHAN%"=="5" goto VALIDATE
 if "%PILIHAN%"=="6" goto PREVIEW
 if "%PILIHAN%"=="7" goto REPORT
+if "%PILIHAN%"=="8" goto GENERATE
+if "%PILIHAN%"=="9" goto LOGOUT
 if "%PILIHAN%"=="0" goto EXIT
 
 echo.
-echo  [!] Pilihan tidak valid. Masukkan angka 0 sampai 7.
+echo  [!] Pilihan tidak valid. Masukkan angka 0 sampai 9.
 goto MENU
 
 :RUN_ALL
@@ -94,6 +98,24 @@ goto DONE
 :REPORT
 echo.
 python src\main.py report
+goto DONE
+
+:GENERATE
+echo.
+echo  [->] Generate pesan blast per nomor dari CSV...
+echo.
+python src\main.py generate
+goto DONE
+
+:LOGOUT
+echo.
+echo  [-^>] Menghapus sesi WhatsApp Web (Log out)...
+if exist "wa_profile" (
+    rmdir /S /Q "wa_profile"
+    echo  [OK] Sesi berhasil dihapus. Silakan pilih opsi 1, 2, atau 4 untuk login dengan nomor baru.
+) else (
+    echo  [INFO] Tidak ada sesi WhatsApp yang tersimpan.
+)
 goto DONE
 
 :DONE
