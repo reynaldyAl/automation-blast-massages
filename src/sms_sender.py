@@ -107,9 +107,6 @@ class SMSSender:
             (True, device_id) jika terhubung
             (False, error_message) jika tidak
         """
-        if self.dry_run:
-            return True, "dry-run"
-
         # Kembalikan cache jika sudah pernah berhasil terdeteksi
         if self._device_checked and not force:
             return self._device_ok, self._device_info
@@ -200,23 +197,23 @@ class SMSSender:
                 xml_str, re.IGNORECASE
             )
 
-            # ── Strategi 2: content-desc = "Send" / "Kirim" / "Enviar" ──────────
+            # ── Strategi 2: content-desc mengandung "Send" / "Kirim" / "Enviar" ───
             if not match:
                 match = re.search(
-                    r'content-desc="(?:Send|Kirim|Enviar|보내기|送信)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+                    r'content-desc="[^"]*(?:Send|Kirim|Enviar|보내기|送信)[^"]*"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
                     xml_str, re.IGNORECASE
                 )
 
-            # ── Strategi 3: text = "Send" / "Kirim" pada elemen Button ──────────
+            # ── Strategi 3: text mengandung "Send" / "Kirim" pada elemen Button ───
             if not match:
                 match = re.search(
-                    r'class="android\.widget\.(?:Button|ImageButton)"[^>]*text="(?:Send|Kirim)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+                    r'class="android\.widget\.(?:Button|ImageButton|TextView)"[^>]*text="[^"]*(?:Send|Kirim)[^"]*"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
                     xml_str, re.IGNORECASE
                 )
                 if not match:
                     # Urutan atribut kadang terbalik
                     match = re.search(
-                        r'text="(?:Send|Kirim)"[^>]*class="android\.widget\.(?:Button|ImageButton)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+                        r'text="[^"]*(?:Send|Kirim)[^"]*"[^>]*class="android\.widget\.(?:Button|ImageButton|TextView)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
                         xml_str, re.IGNORECASE
                     )
 
@@ -242,9 +239,6 @@ class SMSSender:
         Returns:
             tuple (status, error_message)
         """
-        if self.dry_run:
-            return Status.SUCCESS, ""
-
         # Cek device
         ok, info = self.check_device()
         if not ok:
@@ -274,6 +268,17 @@ class SMSSender:
 
             # Tunggu SMS composer terbuka di layar HP
             time.sleep(config.ADB_SEND_WAIT)
+
+            if self.dry_run:
+                # Dry run: check if we found coords automatically, report it, but don't tap
+                if not config.SMS_SEND_COORDS and not self._cached_send_coords:
+                    self._cached_send_coords = self._find_send_coords_dynamically()
+                    if not self._cached_send_coords:
+                        return Status.FAILED, "Dry-run: Tombol Send tidak terdeteksi otomatis."
+                
+                # Beri waktu sebentar agar user bisa melihat preview pesannya di HP
+                time.sleep(2.0)
+                return Status.SUCCESS, "Preview SMS berhasil dibuka (tidak dikirim)"
 
             # ── Tap tombol Send SMS ───────────────────────────────────────────
             if config.SMS_SEND_COORDS:
