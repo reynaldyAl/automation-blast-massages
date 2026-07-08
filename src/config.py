@@ -35,6 +35,9 @@ class Config:
     WA_TIMEOUT_SECONDS: int = _get_int("WA_TIMEOUT_SECONDS", 30)
     WA_HEADLESS: bool = _get_bool("WA_HEADLESS", False)
     WA_PROFILE_DIR: Path = BASE_DIR / os.getenv("WA_PROFILE_DIR", "wa_profile")
+    # Nomor WA untuk login via kode (format: 628xxx tanpa + dan tanpa spasi)
+    # Kosongkan ("") untuk menggunakan QR code seperti biasa
+    WA_LOGIN_PHONE: str = os.getenv("WA_LOGIN_PHONE", "").strip()
 
     # === SMS / ADB ===
     SMS_DELAY_SECONDS: int = _get_int("SMS_DELAY_SECONDS", 10)
