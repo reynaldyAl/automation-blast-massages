@@ -77,10 +77,8 @@ echo  ============================================
 echo   Setup selesai!
 echo.
 echo   Cara Menjalankan:
-echo     1. Buka PowerShell atau Command Prompt
-echo     2. Aktifkan venv: .\venv\Scripts\Activate.ps1
-echo     3. Kirim WA: python src\main.py run --wa-only
-echo     4. Kirim SMS: python src\main.py run --sms-only
+echo     1. Cukup klik ganda (double click) file "run.bat"
+echo     2. Ikuti menu interaktif yang muncul di layar
 echo  ============================================
 echo.
 pause
