@@ -2,8 +2,31 @@
 template_engine.py — Render template pesan Jinja2
 """
 
+import datetime
 from pathlib import Path
+from typing import Optional
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound, TemplateError
+
+
+def get_salam() -> str:
+    """
+    Kembalikan salam berdasarkan waktu lokal saat ini.
+
+    Aturan:
+      - 05:00 – 11:59 → Selamat pagi
+      - 12:00 – 15:59 → Selamat siang
+      - 16:00 – 18:59 → Selamat sore
+      - 19:00 – 23:59 dan 00:00 – 04:59 → Selamat malam
+    """
+    hour = datetime.datetime.now().hour
+    if 5 <= hour < 12:
+        return "Selamat pagi"
+    elif 12 <= hour < 16:
+        return "Selamat siang"
+    elif 16 <= hour < 19:
+        return "Selamat sore"
+    else:
+        return "Selamat malam"
 
 
 class TemplateEngine:
@@ -17,13 +40,20 @@ class TemplateEngine:
             lstrip_blocks=False,
         )
 
-    def render(self, nama_peserta: str, nokapst: str, **extra_vars) -> str:
+    def render(
+        self,
+        nama_peserta: str,
+        nokapst: str,
+        nominal_tunggakan: Optional[str] = None,
+        **extra_vars,
+    ) -> str:
         """
         Render template dengan data peserta.
 
         Args:
             nama_peserta: Nama peserta (kapital)
             nokapst: Nomor kartu JKN-KIS
+            nominal_tunggakan: Nominal tunggakan (opsional, mis. "Rp210,000")
             **extra_vars: Variabel tambahan opsional
 
         Returns:
@@ -42,11 +72,22 @@ class TemplateEngine:
             return template.render(
                 nama_peserta=nama_peserta,
                 nokapst=nokapst,
+                nominal_tunggakan=nominal_tunggakan,
+                salam=get_salam(),
                 **extra_vars,
             )
         except TemplateError as e:
             raise ValueError(f"Error render template: {e}")
 
-    def preview(self, nama_peserta: str = "CONTOH NAMA", nokapst: str = "000123456789") -> str:
+    def preview(
+        self,
+        nama_peserta: str = "CONTOH NAMA",
+        nokapst: str = "000123456789",
+        nominal_tunggakan: Optional[str] = None,
+    ) -> str:
         """Render template dengan data dummy untuk preview."""
-        return self.render(nama_peserta=nama_peserta, nokapst=nokapst)
+        return self.render(
+            nama_peserta=nama_peserta,
+            nokapst=nokapst,
+            nominal_tunggakan=nominal_tunggakan,
+        )
