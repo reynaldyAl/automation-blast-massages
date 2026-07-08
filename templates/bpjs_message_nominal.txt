@@ -1,4 +1,4 @@
-{{ salam }} Bapak/Ibu Keluarga *{{ nama_peserta }}*, kami dari BPJS Kesehatan Kantor Cabang Serang bermaksud menyampaikan informasi bahwa nomor kartu JKN-KIS Keluarga *{{ nokapst }}*.
+{{ salam }} Bapak/Ibu Keluarga *{{ nama_peserta }}*, kami dari BPJS Kesehatan Kantor Cabang Serang bermaksud menyampaikan informasi bahwa nomor kartu JKN-KIS Keluarga *{{ nokapst }}* memiliki tunggakan sebesar *{{ nominal_tunggakan }}*.
 
 Silahkan lakukan pengecekan tunggakan pada aplikasi Mobile JKN dan segera lakukan pembayaran di kanal pembayaran iuran BPJS Kesehatan (Bank Mandiri, BNI, BTN, BRI, BCA, Indomaret, Tokopedia, Alfamart, PT Pos dan lain-lain).
 
