@@ -15,6 +15,7 @@ Penggunaan:
 
 import sys
 import time
+import random
 from pathlib import Path
 
 # ── Fix encoding UTF-8 untuk Windows (mencegah UnicodeEncodeError pada emoji) ─
@@ -30,7 +31,7 @@ from rich.console import Console
 
 from config import config
 from csv_handler import load_csv, Peserta
-from template_engine import TemplateEngine
+from template_engine import TemplateEngine, get_salam
 from wa_sender import WASender
 from sms_sender import SMSSender
 from reporter import Reporter, StateManager, SendResult, Status
@@ -245,7 +246,8 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
                 result.wa_screenshot = wa_screenshot
 
                 if wa_status == Status.SUCCESS:
-                    time.sleep(config.WA_DELAY_SECONDS)
+                    delay = random.uniform(config.WA_DELAY_MIN, config.WA_DELAY_MAX)
+                    time.sleep(delay)
 
             # ── Kirim SMS ─────────────────────────────────────────────────────
             if send_sms and peserta.send_sms:
@@ -257,7 +259,8 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
                 result.sms_error  = sms_error
 
                 if sms_status == Status.SUCCESS:
-                    time.sleep(config.SMS_DELAY_SECONDS)
+                    delay = random.uniform(config.SMS_DELAY_MIN, config.SMS_DELAY_MAX)
+                    time.sleep(delay)
 
             # Catat hasil
             reporter.record(result)
@@ -575,14 +578,9 @@ def report(show_all, page_size):
 @click.option("--csv",      "csv_path", default=None, help="Path CSV input (langsung pakai, skip menu pilihan)")
 @click.option("--output",   "out_path", default=None,
               help="Path file output (default: templates/messages/messages.txt)")
-@click.option("--channel",  "channel",  default=None, type=click.Choice(["wa", "sms"]), help="Pilih format untuk WA atau SMS")
+@click.option("--channel",  "channel",  default=None, type=click.Choice(["wa", "sms", "all"]), help="Pilih format untuk WA atau SMS")
 def generate(tpl_path, csv_path, out_path, channel):
-    """Generate pesan blast per nomor dari CSV dengan konfirmasi interaktif.
-
-    Untuk setiap baris CSV, menampilkan pratinjau pesan lengkap dan menanyakan
-    apakah pesan tersebut ingin di-generate. Pesan yang dikonfirmasi akan
-    di-append ke file output (satu file kumulatif).
-    """
+    """Generate pesan blast per nomor dari CSV."""
     import datetime
     from rich.panel import Panel
     from rich.prompt import Prompt
@@ -590,18 +588,17 @@ def generate(tpl_path, csv_path, out_path, channel):
     from rich.table import Table
 
     print_banner()
-    print_section("✏️  Generate Pesan Blast (Konfirmasi Per Nomor)")
+    print_section("✏️  Generate Pesan Blast (Otomatis per Batch)")
 
     if not channel:
         channel = Prompt.ask(
             "  [bold]Pilih format pesan yang akan di-generate:[/bold]\n"
-            "  Ketik [green]wa[/green] = WhatsApp (dengan format *bold*)\n"
-            "  Ketik [cyan]sms[/cyan] = SMS (tanpa format bintang/markdown)",
-            choices=["wa", "sms"],
+            "  Ketik [green]wa[/green]  = WhatsApp (dengan format *bold*)\n"
+            "  Ketik [cyan]sms[/cyan] = SMS (tanpa format bintang/markdown)\n"
+            "  Ketik [yellow]all[/yellow] = Gabungan WA & SMS",
+            choices=["wa", "sms", "all"],
             default="wa",
         ).strip().lower()
-
-    is_sms = (channel == "sms")
 
     # (Resolve template & output dilakukan setelah CSV dipilih)
 
@@ -664,18 +661,10 @@ def generate(tpl_path, csv_path, out_path, channel):
 
         console.print()
 
-    # ── Resolve template & output ──────────────────────────────────────────────
+    # ── Resolve template ──────────────────────────────────────────────
     tpl_file = Path(tpl_path) if tpl_path else config.TEMPLATE_FILE
-
-    if out_path:
-        output_file = Path(out_path)
-    else:
-        msg_dir = Path(tpl_file).parent / "messages"
-        msg_dir.mkdir(parents=True, exist_ok=True)
-        # Gunakan nama CSV ditambah timestamp agar file baru selalu terbuat setiap kali generate
-        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        suffix = "_sms" if is_sms else "_wa"
-        output_file = msg_dir / f"messages_{csv_file.stem}{suffix}_{ts}.txt"
+    nominal_tpl = tpl_file.parent / "bpjs_message_nominal.txt"
+    has_nominal_tpl = nominal_tpl.exists()
 
     # ── Load CSV ──────────────────────────────────────────────────────────────
     csv_result = load_csv(csv_file)
@@ -691,9 +680,105 @@ def generate(tpl_path, csv_path, out_path, channel):
         console.print("  [yellow]⚠ Tidak ada data peserta di CSV.[/yellow]")
         return
 
-    # Cek apakah template nominal tersedia
-    nominal_tpl = tpl_file.parent / "bpjs_message_nominal.txt"
-    has_nominal_tpl = nominal_tpl.exists()
+    # ── Konfigurasi Batch & Salam ──
+    batches = []
+    console.print(f"\n  [bold]Konfigurasi Batch (Total Data: {total})[/bold]")
+    mode = Prompt.ask("  Pilih mode: [bold cyan]1[/bold cyan] (Auto-split), [bold cyan]2[/bold cyan] (Manual rentang), [bold cyan]3[/bold cyan] (Tanpa batch)", choices=["1", "2", "3"], default="1")
+    
+    if mode == "1":
+        import math
+        from rich.prompt import IntPrompt
+        chunk_size = IntPrompt.ask("  Jumlah data per batch", default=50)
+        
+        total_batches = math.ceil(total / chunk_size)
+        last_batch_size = total % chunk_size or chunk_size
+        
+        console.print(f"  [cyan]=> Total akan terbentuk {total_batches} batch. (Batch ke-{total_batches} berisi sisa {last_batch_size} data).[/cyan]")
+        
+        batch_salam_map = {}
+        unassigned = set(range(1, total_batches + 1))
+        
+        while unassigned:
+            unassigned_str = ", ".join(map(str, sorted(unassigned)))
+            console.print(f"\n  [dim]Batch belum diatur: {unassigned_str}[/dim]")
+            target_str = Prompt.ask("  Pilih nomor batch (contoh: 1,3,5 atau 1-3) [Enter = isi semua sisanya]").strip()
+            
+            targets = set()
+            if not target_str:
+                targets = unassigned.copy()
+            else:
+                for part in target_str.split(','):
+                    part = part.strip()
+                    if '-' in part:
+                        try:
+                            s, e = map(int, part.split('-'))
+                            targets.update(range(s, e + 1))
+                        except ValueError:
+                            pass
+                    elif part.isdigit():
+                        targets.add(int(part))
+            
+            valid_targets = targets.intersection(unassigned)
+            if not valid_targets:
+                console.print("  [red]Input salah, atau batch tersebut sudah diatur sebelumnya.[/red]")
+                continue
+                
+            tgt_list_str = ', '.join(map(str, sorted(valid_targets)))
+            salam = Prompt.ask(f"  Salam untuk batch {tgt_list_str} [Enter = otomatis]").strip()
+            if not salam:
+                salam = get_salam()
+                
+            for b in valid_targets:
+                batch_salam_map[b] = salam
+                unassigned.remove(b)
+
+        start_idx = 1
+        for batch_num in range(1, total_batches + 1):
+            end_idx = min(start_idx + chunk_size - 1, total)
+            salam = batch_salam_map[batch_num]
+            batches.append({"start": start_idx, "end": end_idx, "salam": salam})
+            start_idx = end_idx + 1
+            
+        console.print(f"\n  [green]✓ Selesai! Mengonfigurasi {len(batches)} batch.[/green]\n")
+        
+    elif mode == "2":
+        console.print("  [dim]Anda bisa membagi data berdasarkan rentang (contoh: 1-50 pagi, 51-100 siang).")
+        console.print("  [dim]Kosongkan rentang (tekan Enter) untuk langsung memproses tanpa membagi batch.[/dim]\n")
+        start_idx = 1
+        batch_num = 1
+        while start_idx <= total:
+            rentang = Prompt.ask(f"  Batch {batch_num} - Rentang data (contoh: {start_idx}-{min(start_idx+49, total)}) [Enter = selesai]").strip()
+            if not rentang:
+                break
+            try:
+                r_start, r_end = map(int, rentang.split('-'))
+            except ValueError:
+                console.print("  [red]Format salah! Gunakan format start-end (contoh: 1-50)[/red]")
+                continue
+            
+            salam = Prompt.ask(f"  Salam manual untuk Batch {batch_num} [Enter = otomatis]").strip()
+            batches.append({"start": r_start, "end": r_end, "salam": salam if salam else get_salam()})
+            start_idx = r_end + 1
+            batch_num += 1
+
+    if not batches:
+        salam = Prompt.ask("  [bold]Masukkan salam manual untuk semua data[/bold] [Enter = otomatis]").strip()
+        batches.append({"start": 1, "end": total, "salam": salam if salam else get_salam()})
+
+    # ── Resolve output file ───────────────────────────────────────────────────
+    if out_path:
+        output_file = Path(out_path)
+    else:
+        msg_dir = Path(tpl_file).parent / "messages"
+        msg_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        suffix = f"_{channel}" 
+        
+        if len(batches) == 1:
+            salam_slug = batches[0]['salam'].replace(" ", "").lower()
+            output_file = msg_dir / f"messages_{csv_file.stem}{suffix}_{salam_slug}_{total}data_{ts}.txt"
+        else:
+            output_file = msg_dir / f"messages_{csv_file.stem}{suffix}_multibatch_{total}data_{ts}.txt"
 
     # ── Buat direktori output jika belum ada ──────────────────────────────────
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -709,119 +794,69 @@ def generate(tpl_path, csv_path, out_path, channel):
         + f"  [dim]Output           :[/dim] [cyan]{output_file}[/cyan]\n"
         + f"  [dim]Total data       :[/dim] [bold white]{total}[/bold white] peserta\n"
     )
-    console.print(
-        "  Ketik [bold green]y[/bold green] = generate & simpan, "
-        "[bold red]n[/bold red] = skip, "
-        "[bold yellow]a[/bold yellow] = generate semua, "
-        "[bold magenta]q[/bold magenta] = keluar\n"
-    )
-
     generated_count = 0
-    skipped_count   = 0
-    generate_all    = False
 
-    for idx, peserta in enumerate(peserta_list, start=1):
-        # ── Pilih engine & render pesan ───────────────────────────────────────
-        _engine = _get_engine(tpl_file, peserta)
-        message = _engine.render(
-            nama_peserta=peserta.nama_peserta,
-            nokapst=peserta.nokapst,
-            nominal_tunggakan=peserta.nominal_tunggakan,
-            strip_markdown=is_sms,
-        )
-
-        # ── Info header ───────────────────────────────────────────────────────
-        console.rule(f"[bold cyan]Peserta {idx} / {total}[/bold cyan]")
-
-        # Info peserta (tabel ringkas)
-        info_table = Table(box=rich_box.SIMPLE, show_header=False, padding=(0, 2))
-        info_table.add_column("Label", style="dim")
-        info_table.add_column("Value", style="bold white")
-        info_table.add_row("Nomor",   str(peserta.nomor or idx))
-        info_table.add_row("Nama",    peserta.nama_peserta)
-        info_table.add_row("NOKAPST", peserta.nokapst)
-        info_table.add_row("No HP",   peserta.nohp_original)
-        info_table.add_row(
-            "Nominal Tunggakan",
-            f"[bold yellow]{peserta.nominal_tunggakan}[/bold yellow]"
-            if peserta.nominal_tunggakan else "[dim]—[/dim]"
-        )
-        info_table.add_row(
-            "Template Digunakan",
-            f"[green]nominal[/green]" if peserta.nominal_tunggakan and has_nominal_tpl
-            else "[dim]default[/dim]"
-        )
-        info_table.add_row(
-            "Status HP",
-            "[green]✓ Valid[/green]" if peserta.phone.is_valid else "[red]✗ Tidak Valid[/red]"
-        )
-        console.print(info_table)
-
-        # Preview pesan dalam panel
-        console.print(
-            Panel(
-                message,
-                title="[bold]Preview Pesan[/bold]",
-                border_style="cyan",
-                padding=(1, 2),
-            )
-        )
-
-        # ── Konfirmasi (skip jika generate_all aktif) ─────────────────────────
-        if generate_all:
-            pilihan = "y"
-        else:
-            try:
-                pilihan = Prompt.ask(
-                    f"  [bold]Generate pesan untuk [cyan]{peserta.nama_peserta}[/cyan]?[/bold]",
-                    choices=["y", "n", "a", "q"],
-                    default="y",
-                ).strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                console.print("\n  [bold yellow]⚠ Dibatalkan oleh pengguna.[/bold yellow]")
-                break
-
-        if pilihan == "q":
-            console.print("  [bold magenta]↩ Generate dihentikan.[/bold magenta]")
-            break
-
-        if pilihan == "n":
-            skipped_count += 1
-            console.print("  [dim]→ Di-skip.[/dim]\n")
-            continue
-
-        if pilihan == "a":
-            generate_all = True
-
-        # ── Tulis / append ke file output ─────────────────────────────────────
-        wa_link = f" (https://wa.me/{peserta.phone.wa_format})" if not is_sms and peserta.phone.is_valid else ""
-        separator = (
-            "=" * 60 + "\n"
-            + f"# Nomor   : {peserta.nomor or idx}\n"
-            + f"# Nama    : {peserta.nama_peserta}\n"
-            + f"# NOKAPST : {peserta.nokapst}\n"
-            + f"# No HP   : {peserta.nohp_original}{wa_link}\n"
-            + (f"# Nominal : {peserta.nominal_tunggakan}\n" if peserta.nominal_tunggakan else "")
-            + f"# Waktu   : {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-            + "=" * 60 + "\n"
-        )
-
-        with open(output_file, "a", encoding="utf-8") as f:
-            f.write(separator)
-            f.write(message.strip())
-            f.write("\n\n")
-
-        generated_count += 1
-        console.print(
-            f"  [bold green]✓ Disimpan![/bold green] "
-            f"[dim]({generated_count} pesan tersimpan sejauh ini)[/dim]\n"
-        )
+    with open(output_file, "w", encoding="utf-8") as f:
+        # Loop per batch
+        for batch in batches:
+            r_start = batch["start"]
+            r_end = batch["end"]
+            current_salam = batch["salam"]
+            
+            # Tulis Header Batch
+            f.write(f"===== BLAST WA DAN SMS ({current_salam.upper()}) | Data {r_start}-{r_end} =====\n\n")
+            
+            # Ambil peserta dalam rentang ini (berdasarkan urutan baris 1-N)
+            batch_peserta = [p for p in peserta_list if r_start <= (p.row_index + 1) <= r_end]
+            
+            for peserta in batch_peserta:
+                _engine = _get_engine(tpl_file, peserta)
+                
+                # Fungsi helper untuk merender pesan
+                def render_msg(is_sms_format: bool):
+                    return _engine.render(
+                        nama_peserta=peserta.nama_peserta,
+                        nokapst=peserta.nokapst,
+                        nominal_tunggakan=peserta.nominal_tunggakan,
+                        strip_markdown=is_sms_format,
+                        custom_salam=current_salam,
+                        **peserta.extra_data
+                    )
+                
+                wa_link = f" (https://wa.me/{peserta.phone.wa_format})" if peserta.phone.is_valid else ""
+                idx_display = peserta.nomor if peserta.nomor is not None else (peserta.row_index + 1)
+                
+                separator = (
+                    "=" * 60 + "\n"
+                    + f"# Nomor   : {idx_display}\n"
+                    + f"# Nama    : {peserta.nama_peserta}\n"
+                    + f"# NOKAPST : {peserta.nokapst}\n"
+                    + f"# No HP   : {peserta.nohp_original}{wa_link}\n"
+                    + (f"# Nominal : {peserta.nominal_tunggakan}\n" if peserta.nominal_tunggakan else "")
+                    + f"# Waktu   : {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                )
+                
+                f.write(separator)
+                f.write("Keterangan : Pesan Blast WA dan SMS\n")
+                f.write("===========================\n")
+                
+                if channel in ("wa", "all"):
+                    f.write(render_msg(is_sms_format=False).strip() + "\n")
+                    f.write("===========================\n")
+                
+                if channel in ("sms", "all"):
+                    f.write(render_msg(is_sms_format=True).strip() + "\n")
+                    f.write("===========================\n")
+                
+                f.write("\n")
+                generated_count += 1
+                
+            f.write("\n")
 
     # ── Ringkasan akhir ────────────────────────────────────────────────────────
     console.rule("[bold]Selesai[/bold]")
     console.print(
         f"\n  [bold green]✓ {generated_count}[/bold green] pesan di-generate dan disimpan.\n"
-        f"  [dim]✗ {skipped_count} peserta di-skip.[/dim]\n"
     )
 
     if generated_count > 0:
@@ -843,6 +878,41 @@ def generate(tpl_path, csv_path, out_path, channel):
             pass
 
     console.print()
+
+# ─── cleanup command ──────────────────────────────────────────────────────────
+@cli.command()
+def cleanup():
+    """Membersihkan file laporan log dan template hasil generate otomatis."""
+    from rich.prompt import Prompt
+    print_banner()
+    print_section("🧹 Cleanup Log & Messages")
+    
+    if Prompt.ask("  [bold red]Yakin ingin menghapus file log (.log) dan pesan tergenerate (.txt)?[/bold red]", choices=["y", "n"], default="n").strip().lower() != "y":
+        console.print("  [dim]Dibatalkan.[/dim]")
+        return
+        
+    deleted_msgs = 0
+    msg_dir = config.TEMPLATE_FILE.parent / "messages"
+    if msg_dir.exists():
+        for f in msg_dir.glob("messages_*.txt"):
+            try:
+                f.unlink()
+                deleted_msgs += 1
+            except Exception as e:
+                console.print(f"  [yellow]Gagal menghapus {f.name}: {e}[/yellow]")
+                
+    deleted_reports = 0
+    if config.REPORT_DIR.exists():
+        for f in config.REPORT_DIR.glob("*.log"):
+            try:
+                f.unlink()
+                deleted_reports += 1
+            except Exception as e:
+                console.print(f"  [yellow]Gagal menghapus {f.name}: {e}[/yellow]")
+                    
+    console.print(f"\n  [bold green]✓ Cleanup Selesai[/bold green]")
+    console.print(f"  - {deleted_msgs} file pesan dihapus.")
+    console.print(f"  - {deleted_reports} file log laporan dihapus.\n")
 
 
 # ─── Entry Point ──────────────────────────────────────────────────────────────
