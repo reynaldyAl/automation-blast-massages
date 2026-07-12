@@ -74,7 +74,9 @@ Setiap kali ingin mengirim pesan, lakukan ini:
   [8] Lihat laporan terakhir
   [9] Generate pesan blast WA
   [10] Generate pesan blast SMS
-  [11] Hapus Sesi WhatsApp (Log Out)
+  [11] Generate pesan blast WA + SMS
+  [12] Hapus Sesi WhatsApp (Log Out)
+  [13] Bersihkan data log & template (Cleanup)
   [0] Keluar
 ------------------------------------------------
 
@@ -187,7 +189,9 @@ venv\Scripts\python.exe src\main.py run
 | [8] | `python src/main.py report` | Lihat laporan terakhir |
 | [9] | `python src/main.py generate --channel wa` | Generate daftar pesan WA per nomor |
 | [10] | `python src/main.py generate --channel sms` | Generate daftar pesan SMS per nomor |
-| [11] | (Hapus folder `wa_profile`) | Reset / Log out sesi WhatsApp |
+| [11] | `python src/main.py generate --channel all` | Generate daftar pesan WA + SMS per nomor (Gabungan) |
+| [12] | (Hapus folder `wa_profile`) | Reset / Log out sesi WhatsApp |
+| [13] | `python src/main.py cleanup` | Menghapus log lama dan file output `.txt` pesan blast |
 | — | `python src/main.py run --fresh` | Reset resume state & mulai dari awal |
 
 > 💡 Saat menggunakan terminal di IDE, ganti `python` dengan `venv\Scripts\python.exe` agar menggunakan versi yang benar.
@@ -199,10 +203,12 @@ venv\Scripts\python.exe src\main.py run
 | Fitur | Keterangan |
 |---|---|
 |  **WA Web Automation** | Bekerja senatural manusia, minim risiko banned |
+|  **Random Delay Anti-Ban** | Jeda acak antar pesan (bisa diatur MIN & MAX di `config.py`) agar menghindari pemblokiran WA |
 |  **SMS Auto-Detect** | Kirim SMS via USB, otomatis cari tombol Send di HP |
 |  **Visual Dry Run** | Buka chat, ketik pesan di browser — tidak kirim |
 |  **Setup Instan** | `setup.bat` sekali klik, langsung siap pakai |
-|  **Template Jinja2** | Edit pesan dengan variabel `{{ nama_peserta }}` dll |
+|  **Template Jinja2 & Placeholder Dinamis** | Edit pesan dengan variabel apa pun. Cukup tambah kolom di CSV (misal: `Kelas_Rawat`), lalu panggil di template dengan `{{ Kelas_Rawat }}` |
+|  **Batching Generate** | Generate pesan sekaligus dalam beberapa rentang/batch (misal: 1-50 pagi, 51-100 siang) dengan salam otomatis |
 |  **Validasi Nomor HP** | Normalisasi `08xx` → `628xx`, deteksi nomor invalid |
 |  **Retry Otomatis** | Ulangi pengiriman yang gagal secara otomatis |
 |  **Resume Mode** | Lanjut dari baris terakhir jika proses terhenti |
