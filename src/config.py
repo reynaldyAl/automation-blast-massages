@@ -31,7 +31,8 @@ class Config:
     SEND_SMS: bool = _get_bool("SEND_SMS", True)
 
     # === WHATSAPP ===
-    WA_DELAY_SECONDS: int = _get_int("WA_DELAY_SECONDS", 5)
+    WA_DELAY_MIN: int = _get_int("WA_DELAY_MIN", 3)
+    WA_DELAY_MAX: int = _get_int("WA_DELAY_MAX", 8)
     WA_TIMEOUT_SECONDS: int = _get_int("WA_TIMEOUT_SECONDS", 30)
     WA_HEADLESS: bool = _get_bool("WA_HEADLESS", False)
     WA_PROFILE_DIR: Path = BASE_DIR / os.getenv("WA_PROFILE_DIR", "wa_profile")
@@ -40,7 +41,8 @@ class Config:
     WA_LOGIN_PHONE: str = os.getenv("WA_LOGIN_PHONE", "").strip()
 
     # === SMS / ADB ===
-    SMS_DELAY_SECONDS: int = _get_int("SMS_DELAY_SECONDS", 10)
+    SMS_DELAY_MIN: int = _get_int("SMS_DELAY_MIN", 5)
+    SMS_DELAY_MAX: int = _get_int("SMS_DELAY_MAX", 12)
     ADB_DEVICE_ID: str = os.getenv("ADB_DEVICE_ID", "").strip()
     ADB_SEND_WAIT: int = _get_int("ADB_SEND_WAIT", 3)
     SMS_SEND_COORDS: str = os.getenv("SMS_SEND_COORDS", "").strip()
