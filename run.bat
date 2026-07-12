@@ -38,7 +38,9 @@ echo   [7] Preview template pesan
 echo   [8] Lihat laporan terakhir
 echo   [9] Generate pesan blast WA
 echo   [10] Generate pesan blast SMS
-echo   [11] Hapus Sesi WhatsApp (Log Out)
+echo   [11] Generate pesan blast WA + SMS
+echo   [12] Hapus Sesi WhatsApp (Log Out)
+echo   [13] Bersihkan data log dan template (Cleanup)
 echo   [0] Keluar
 echo  ------------------------------------------------
 echo.
@@ -54,7 +56,9 @@ if "%PILIHAN%"=="7" goto PREVIEW
 if "%PILIHAN%"=="8" goto REPORT
 if "%PILIHAN%"=="9" goto GENERATE_WA
 if "%PILIHAN%"=="10" goto GENERATE_SMS
-if "%PILIHAN%"=="11" goto LOGOUT
+if "%PILIHAN%"=="11" goto GENERATE_ALL
+if "%PILIHAN%"=="12" goto LOGOUT
+if "%PILIHAN%"=="13" goto CLEANUP
 if "%PILIHAN%"=="0" goto EXIT
 
 echo.
@@ -125,6 +129,13 @@ echo.
 python src\main.py generate --channel sms
 goto DONE
 
+:GENERATE_ALL
+echo.
+echo  [-^>] Generate pesan blast WA dan SMS per nomor dari CSV...
+echo.
+python src\main.py generate --channel all
+goto DONE
+
 :LOGOUT
 echo.
 echo  [-^>] Menghapus sesi WhatsApp Web (Log out)...
@@ -134,6 +145,13 @@ if exist "wa_profile" (
 ) else (
     echo  [INFO] Tidak ada sesi WhatsApp yang tersimpan.
 )
+goto DONE
+
+:CLEANUP
+echo.
+echo  [-^>] Membersihkan file log laporan dan template pesan otomatis...
+echo.
+python src\main.py cleanup
 goto DONE
 
 :DONE
