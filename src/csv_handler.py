@@ -26,6 +26,7 @@ class Peserta:
     send_wa: bool = True
     send_sms: bool = True
     nominal_tunggakan: Optional[str] = None  # Opsional — dari kolom nominal_tunggakan CSV
+    extra_data: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -59,6 +60,9 @@ def load_csv(csv_path: Path) -> CSVLoadResult:
 
     # --- Normalisasi nama kolom (lowercase, strip spasi & ganti spasi dengan _) ---
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
+    
+    # --- Alias nama kolom (agar no_hp otomatis dibaca sebagai nohp) ---
+    df.rename(columns={"no_hp": "nohp"}, inplace=True)
 
     # --- Validasi kolom wajib ---
     missing = REQUIRED_COLUMNS - set(df.columns)
@@ -119,6 +123,13 @@ def load_csv(csv_path: Path) -> CSVLoadResult:
             raw_nominal = str(raw_nominal).strip()
         nominal_tunggakan = raw_nominal if raw_nominal and raw_nominal.lower() != "nan" else None
 
+        # Ambil kolom ekstra untuk placeholder dinamis
+        extra = {}
+        for col in df.columns:
+            if col not in {"row_index", "nomor", "nama_peserta", "nokapst", "nohp", "send_wa", "send_sms", "nominal_tunggakan"}:
+                val = row.get(col)
+                extra[col] = str(val).strip() if pd.notna(val) else ""
+
         peserta = Peserta(
             row_index=int(idx),
             nomor=nomor,
@@ -129,6 +140,7 @@ def load_csv(csv_path: Path) -> CSVLoadResult:
             send_wa=send_wa,
             send_sms=send_sms,
             nominal_tunggakan=nominal_tunggakan,
+            extra_data=extra,
         )
         result.peserta_list.append(peserta)
         result.valid_rows += 1
