@@ -56,6 +56,7 @@ class TemplateEngine:
         nokapst: str,
         nominal_tunggakan: Optional[str] = None,
         strip_markdown: bool = False,
+        custom_salam: Optional[str] = None,
         **extra_vars,
     ) -> str:
         """
@@ -66,6 +67,7 @@ class TemplateEngine:
             nokapst: Nomor kartu JKN-KIS
             nominal_tunggakan: Nominal tunggakan (opsional, mis. "Rp210,000")
             strip_markdown: Hapus format WhatsApp (*bold*, _italic_) untuk SMS
+            custom_salam: Salam manual (opsional, jika tidak ada akan otomatis)
             **extra_vars: Variabel tambahan opsional
 
         Returns:
@@ -85,7 +87,7 @@ class TemplateEngine:
                 nama_peserta=nama_peserta,
                 nokapst=nokapst,
                 nominal_tunggakan=nominal_tunggakan,
-                salam=get_salam(),
+                salam=custom_salam if custom_salam else get_salam(),
                 **extra_vars,
             )
             if strip_markdown:
