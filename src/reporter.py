@@ -18,10 +18,18 @@ log_formatter = logging.Formatter("[%(asctime)s] %(levelname)s — %(message)s",
 logger = logging.getLogger("blast")
 logger.setLevel(logging.DEBUG)
 
-_log_file = config.REPORT_DIR / f"blast_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-_fh = logging.FileHandler(_log_file, encoding="utf-8")
-_fh.setFormatter(log_formatter)
-logger.addHandler(_fh)
+_file_logger_inited = False
+
+def init_file_logger():
+    global _file_logger_inited
+    if _file_logger_inited:
+        return
+    
+    _log_file = config.REPORT_DIR / f"blast_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    _fh = logging.FileHandler(_log_file, encoding="utf-8")
+    _fh.setFormatter(log_formatter)
+    logger.addHandler(_fh)
+    _file_logger_inited = True
 
 
 # ─── Status Constants ─────────────────────────────────────────────────────────

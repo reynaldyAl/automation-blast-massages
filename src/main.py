@@ -34,7 +34,7 @@ from csv_handler import load_csv, Peserta
 from template_engine import TemplateEngine, get_salam
 from wa_sender import WASender
 from sms_sender import SMSSender
-from reporter import Reporter, StateManager, SendResult, Status
+from reporter import Reporter, StateManager, SendResult, Status, init_file_logger
 from dashboard import (
     console, print_banner, print_config_summary,
     create_progress, print_send_result, print_invalid_phone,
@@ -158,6 +158,7 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
             console.print("\n  [green]▶ Melanjutkan proses...[/green]\n")
 
     # ── Init sender & reporter ────────────────────────────────────────────────
+    init_file_logger()
     reporter = Reporter()
     wa  = WASender(dry_run=dry_run)
     sms = SMSSender(dry_run=dry_run)
