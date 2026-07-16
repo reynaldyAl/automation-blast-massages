@@ -28,7 +28,7 @@ Buka terminal di IDE kamu (tekan **Ctrl + `**), lalu ketik:
 
 | Langkah | Keterangan |
 |---|---|
-| ✅ Cek Python | Memastikan Python terdeteksi di PATH |
+| ✅ Cek Python | Memastikan Python terdeteksi di PATH (.12) |
 | ✅ Install ADB | Menginstall Android Platform Tools via `winget` |
 | ✅ Buat Virtual Environment | Membuat folder `venv/` agar library terisolasi |
 | ✅ Install Dependencies | `pip install -r requirements.txt` |
