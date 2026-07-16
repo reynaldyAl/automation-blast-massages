@@ -339,7 +339,8 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
                 break
 
     # ── Cleanup ───────────────────────────────────────────────────────────────
-    wa.close()
+    if wa:
+        wa.close()
     state.clear()
 
     # ── Summary ───────────────────────────────────────────────────────────────

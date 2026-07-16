@@ -42,6 +42,7 @@ echo   [11] Generate pesan blast SMS
 echo   [12] Generate pesan blast WA + SMS
 echo   [13] Hapus Sesi WhatsApp (Log Out)
 echo   [14] Bersihkan data log dan template (Cleanup)
+echo   [15] Perbaiki / Update Dependency (Fix Error)
 echo   [0] Keluar
 echo  ------------------------------------------------
 echo.
@@ -61,6 +62,7 @@ if "%PILIHAN%"=="11" goto GENERATE_SMS
 if "%PILIHAN%"=="12" goto GENERATE_ALL
 if "%PILIHAN%"=="13" goto LOGOUT
 if "%PILIHAN%"=="14" goto CLEANUP
+if "%PILIHAN%"=="15" goto FIX_DEPS
 if "%PILIHAN%"=="0" goto EXIT
 
 echo.
@@ -160,6 +162,18 @@ echo  [-^>] Membersihkan file log laporan dan template pesan otomatis...
 echo.
 python src\main.py cleanup
 goto DONE
+
+:FIX_DEPS
+echo.
+echo  [-^>] Memeriksa dan memperbaiki dependency / browser...
+echo.
+call venv\Scripts\activate
+pip install -r requirements.txt
+playwright install chromium
+echo.
+echo  [+] Proses perbaikan selesai!
+pause
+goto MENU
 
 :DONE
 :: Beri jeda agar output Python selesai ditulis ke terminal sebelum prompt muncul
