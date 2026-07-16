@@ -89,6 +89,7 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
     # Override channel dari flag
     send_wa  = config.SEND_WA  and not sms_only
     send_sms = config.SEND_SMS and not wa_only
+    
     if wa_only:
         send_sms = False
     if sms_only:
@@ -160,8 +161,8 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
     # ── Init sender & reporter ────────────────────────────────────────────────
     init_file_logger()
     reporter = Reporter()
-    wa  = WASender(dry_run=dry_run)
-    sms = SMSSender(dry_run=dry_run)
+    wa  = WASender(dry_run=dry_run) if send_wa else None
+    sms = SMSSender(dry_run=dry_run) if send_sms else None
 
     # Cek ADB jika SMS aktif
     if send_sms and not dry_run:
@@ -181,8 +182,8 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
             sys.exit(1)
 
     # ── Proses pengiriman ─────────────────────────────────────────────────────
-    print_section("📤 Pengiriman Pesan")
-
+    print_section("Proses Pengiriman")
+    
     peserta_list = csv_result.peserta_list
     total        = len(peserta_list)
 
@@ -262,6 +263,8 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
                 if sms_status == Status.SUCCESS:
                     delay = random.uniform(config.SMS_DELAY_MIN, config.SMS_DELAY_MAX)
                     time.sleep(delay)
+
+
 
             # Catat hasil
             reporter.record(result)
@@ -878,6 +881,47 @@ def generate(tpl_path, csv_path, out_path, channel):
         except Exception:
             pass
 
+    console.print()
+
+# ─── connect_wireless command ─────────────────────────────────────────────────
+@cli.command(name="connect-wireless")
+def connect_wireless():
+    """Menghubungkan ADB ke HP Android secara nirkabel (via Wi-Fi)."""
+    import subprocess
+    from rich.prompt import Prompt
+    
+    print_banner()
+    print_section("📱 Hubungkan HP Nirkabel (Wireless ADB)")
+    
+    console.print("  [cyan]Pastikan:[/cyan]")
+    console.print("  1. HP dan Komputer terhubung di jaringan Wi-Fi/Hotspot yang sama.")
+    console.print("  2. 'Proses Debug Nirkabel' (Wireless Debugging) sudah diaktifkan di Opsi Pengembang HP Anda.")
+    console.print("  3. Anda sudah melihat Alamat IP & Port dari layar HP Anda.\n")
+    
+    address = Prompt.ask("  Masukkan Alamat IP dan Port (contoh: [bold]192.168.1.5:5555[/bold])").strip()
+    
+    if not address:
+        console.print("  [dim]Dibatalkan.[/dim]")
+        return
+        
+    console.print(f"\n  [dim]Menghubungkan ke {address}...[/dim]")
+    try:
+        result = subprocess.run(["adb", "connect", address], capture_output=True, text=True)
+        output = result.stdout.lower()
+        
+        if "connected to" in output and "failed" not in output:
+            console.print(f"  [bold green]✓ Berhasil terhubung secara nirkabel ke {address}![/bold green]")
+            console.print("  [green]Sekarang Anda bisa menggunakan menu pengiriman SMS tanpa mencolokkan kabel USB.[/green]")
+        elif "failed to authenticate" in output:
+            console.print(f"  [bold yellow]⚠ HP menolak koneksi.[/bold yellow] Silakan cek layar HP Anda dan klik 'Izinkan' (Allow).")
+        else:
+            console.print(f"  [bold yellow]⚠ Respons ADB:[/bold yellow] {result.stdout.strip()}")
+            console.print("  [dim]Periksa kembali IP, Port, dan pastikan HP & PC berada di Wi-Fi yang sama.[/dim]")
+    except FileNotFoundError:
+        console.print("  [bold red]✖ ADB tidak terdeteksi.[/bold red]")
+    except Exception as e:
+        console.print(f"  [bold red]✖ Terjadi kesalahan:[/bold red] {e}")
+        
     console.print()
 
 # ─── cleanup command ──────────────────────────────────────────────────────────
