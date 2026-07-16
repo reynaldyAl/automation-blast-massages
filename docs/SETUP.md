@@ -64,18 +64,29 @@ winget install Google.PlatformTools --accept-source-agreements --accept-package-
 
 ---
 
-## 💬 Tahap 2: Setup HP Android (Untuk Backup SMS)
+## 💬 Tahap 2: Setup HP Android (Untuk SMS)
 
-Sistem akan menggunakan kabel USB untuk mengirimkan perintah pengetikan langsung ke HP Android Anda, persis seperti robot yang mengetik di HP.
+Sistem akan menggunakan Android Debug Bridge (ADB) untuk mengirimkan perintah pengetikan langsung ke HP Android Anda secara otomatis. Anda bisa menggunakan **Kabel USB** atau **Wi-Fi Nirkabel**.
 
-1. Buka HP Android Anda.
-2. Masuk ke **Pengaturan → Tentang Ponsel** → ketuk **Nomor Versi (Build Number)** sebanyak **7 kali** (sampai muncul notif *"Mode Pengembang aktif"*).
-3. Masuk ke **Pengaturan → Opsi Pengembang (Developer Options)**.
-4. Aktifkan fitur **USB Debugging** ✓.
-5. Sambungkan HP ke komputer menggunakan kabel USB data yang bagus.
-6. **SANGAT PENTING:** Lihat layar HP Anda! Jika muncul *popup* *"Izinkan debugging USB?"*, centang opsi *"Selalu izinkan dari komputer ini"* lalu ketuk **Izinkan (OK)**.
+### Opsi A: Nirkabel / Wi-Fi (Sangat Direkomendasikan 🌟)
+Fitur ini tersedia untuk Android 11 ke atas. Anda tidak perlu mencolokkan kabel apapun!
+1. Pastikan Komputer dan HP Anda terhubung ke jaringan Wi-Fi/Hotspot yang sama.
+2. Buka HP Android Anda.
+3. Masuk ke **Pengaturan → Tentang Ponsel** → ketuk **Nomor Versi (Build Number)** sebanyak **7 kali** (sampai muncul notif *"Mode Pengembang aktif"*).
+4. Masuk ke **Pengaturan → Opsi Pengembang (Developer Options)**.
+5. Cari dan ketuk menu **Proses debug nirkabel** (Wireless debugging). Aktifkan *toggle*-nya.
+6. Lihat di layar HP, Anda akan menemukan **Alamat IP dan Port** (contoh: `192.168.1.5:43210`).
+7. Di menu utama aplikasi di Komputer (lewat `run.bat`), pilih menu **[4] Hubungkan HP Nirkabel (Wi-Fi)**.
+8. Masukkan IP dan Port tersebut. Selesai!
 
-Untuk memastikan komputer Anda sudah terkoneksi ke HP, jalankan:
+### Opsi B: Menggunakan Kabel USB
+Jika HP Anda tidak mendukung *Wireless debugging*:
+1. Aktifkan **Opsi Pengembang (Developer Options)** seperti di atas.
+2. Aktifkan fitur **USB Debugging**.
+3. Sambungkan HP ke komputer menggunakan kabel USB data.
+4. **SANGAT PENTING:** Lihat layar HP Anda! Jika muncul *popup* *"Izinkan debugging USB?"*, centang opsi *"Selalu izinkan dari komputer ini"* lalu ketuk **Izinkan (OK)**.
+
+Untuk memastikan komputer Anda sudah terkoneksi ke HP via kabel, jalankan:
 ```powershell
 adb devices
 ```
