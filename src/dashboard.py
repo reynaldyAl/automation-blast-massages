@@ -45,8 +45,8 @@ def print_config_summary(config, total_peserta: int):
     table.add_row("👥 Total Peserta", str(total_peserta))
     table.add_row("📱 Kirim WA", "[green]✓ Aktif[/green]" if config.SEND_WA else "[dim]✗ Nonaktif[/dim]")
     table.add_row("💬 Kirim SMS", "[green]✓ Aktif[/green]" if config.SEND_SMS else "[dim]✗ Nonaktif[/dim]")
-    table.add_row("⏱ Delay WA", f"{config.WA_DELAY_SECONDS}s" if config.SEND_WA else "-")
-    table.add_row("⏱ Delay SMS", f"{config.SMS_DELAY_SECONDS}s" if config.SEND_SMS else "-")
+    table.add_row("⏱ Delay WA", f"{config.WA_DELAY_MIN}s - {config.WA_DELAY_MAX}s" if config.SEND_WA else "-")
+    table.add_row("⏱ Delay SMS", f"{config.SMS_DELAY_MIN}s - {config.SMS_DELAY_MAX}s" if config.SEND_SMS else "-")
     table.add_row("🔁 Retry Failed", "[green]✓[/green]" if config.RETRY_FAILED else "[dim]✗[/dim]")
 
     console.print(Panel(table, title="[bold]Konfigurasi[/bold]", border_style="cyan"))
