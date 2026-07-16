@@ -19,9 +19,10 @@ logger = logging.getLogger("blast")
 logger.setLevel(logging.DEBUG)
 
 _file_logger_inited = False
+_log_file = None
 
 def init_file_logger():
-    global _file_logger_inited
+    global _file_logger_inited, _log_file
     if _file_logger_inited:
         return
     
