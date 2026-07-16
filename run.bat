@@ -31,16 +31,17 @@ echo  ------------------------------------------------
 echo   [1] Kirim semua pesan  (WA + SMS)
 echo   [2] WhatsApp only
 echo   [3] SMS only
-echo   [4] Dry-run preview WA
-echo   [5] Dry-run preview SMS
-echo   [6] Validasi CSV + Config
-echo   [7] Preview template pesan
-echo   [8] Lihat laporan terakhir
-echo   [9] Generate pesan blast WA
-echo   [10] Generate pesan blast SMS
-echo   [11] Generate pesan blast WA + SMS
-echo   [12] Hapus Sesi WhatsApp (Log Out)
-echo   [13] Bersihkan data log dan template (Cleanup)
+echo   [4] Hubungkan HP Nirkabel (Wi-Fi)
+echo   [5] Dry-run preview WA
+echo   [6] Dry-run preview SMS
+echo   [7] Validasi CSV + Config
+echo   [8] Preview template pesan
+echo   [9] Lihat laporan terakhir
+echo   [10] Generate pesan blast WA
+echo   [11] Generate pesan blast SMS
+echo   [12] Generate pesan blast WA + SMS
+echo   [13] Hapus Sesi WhatsApp (Log Out)
+echo   [14] Bersihkan data log dan template (Cleanup)
 echo   [0] Keluar
 echo  ------------------------------------------------
 echo.
@@ -49,16 +50,17 @@ set /p PILIHAN=  Masukkan pilihan:
 if "%PILIHAN%"=="1" goto RUN_ALL
 if "%PILIHAN%"=="2" goto RUN_WA
 if "%PILIHAN%"=="3" goto RUN_SMS
-if "%PILIHAN%"=="4" goto DRY_RUN_WA
-if "%PILIHAN%"=="5" goto DRY_RUN_SMS
-if "%PILIHAN%"=="6" goto VALIDATE
-if "%PILIHAN%"=="7" goto PREVIEW
-if "%PILIHAN%"=="8" goto REPORT
-if "%PILIHAN%"=="9" goto GENERATE_WA
-if "%PILIHAN%"=="10" goto GENERATE_SMS
-if "%PILIHAN%"=="11" goto GENERATE_ALL
-if "%PILIHAN%"=="12" goto LOGOUT
-if "%PILIHAN%"=="13" goto CLEANUP
+if "%PILIHAN%"=="4" goto WIRELESS_ADB
+if "%PILIHAN%"=="5" goto DRY_RUN_WA
+if "%PILIHAN%"=="6" goto DRY_RUN_SMS
+if "%PILIHAN%"=="7" goto VALIDATE
+if "%PILIHAN%"=="8" goto PREVIEW
+if "%PILIHAN%"=="9" goto REPORT
+if "%PILIHAN%"=="10" goto GENERATE_WA
+if "%PILIHAN%"=="11" goto GENERATE_SMS
+if "%PILIHAN%"=="12" goto GENERATE_ALL
+if "%PILIHAN%"=="13" goto LOGOUT
+if "%PILIHAN%"=="14" goto CLEANUP
 if "%PILIHAN%"=="0" goto EXIT
 
 echo.
@@ -84,6 +86,11 @@ echo.
 echo  [-^>] Mengirim via SMS saja...
 echo.
 python src\main.py run --sms-only
+goto DONE
+
+:WIRELESS_ADB
+echo.
+python src\main.py connect-wireless
 goto DONE
 
 :DRY_RUN_WA
