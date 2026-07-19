@@ -950,7 +950,7 @@ def cleanup():
     print_banner()
     print_section("🧹 Cleanup Log & Messages")
     
-    if Prompt.ask("  [bold red]Yakin ingin menghapus file log (.log) dan pesan tergenerate (.txt)?[/bold red]", choices=["y", "n"], default="n").strip().lower() != "y":
+    if Prompt.ask("  [bold red]Yakin ingin menghapus SEMUA laporan pengiriman (.csv, .log) dan pesan tergenerate (.txt)?[/bold red]", choices=["y", "n"], default="n").strip().lower() != "y":
         console.print("  [dim]Dibatalkan.[/dim]")
         return
         
@@ -966,16 +966,17 @@ def cleanup():
                 
     deleted_reports = 0
     if config.REPORT_DIR.exists():
-        for f in config.REPORT_DIR.glob("*.log"):
-            try:
-                f.unlink()
-                deleted_reports += 1
-            except Exception as e:
-                console.print(f"  [yellow]Gagal menghapus {f.name}: {e}[/yellow]")
+        for ext in ["*.log", "*.csv"]:
+            for f in config.REPORT_DIR.rglob(ext):
+                try:
+                    f.unlink()
+                    deleted_reports += 1
+                except Exception as e:
+                    console.print(f"  [yellow]Gagal menghapus {f.name}: {e}[/yellow]")
                     
     console.print(f"\n  [bold green]✓ Cleanup Selesai[/bold green]")
-    console.print(f"  - {deleted_msgs} file pesan dihapus.")
-    console.print(f"  - {deleted_reports} file log laporan dihapus.\n")
+    console.print(f"  - {deleted_msgs} file pesan terhapus.")
+    console.print(f"  - {deleted_reports} file laporan (.log & .csv) terhapus.\n")
 
 
 # ─── Entry Point ──────────────────────────────────────────────────────────────
