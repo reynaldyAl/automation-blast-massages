@@ -1,0 +1,1 @@
+{{ salam }}, Yth. keluarga {{ nama_peserta }}, BPJS Anda ({{ nokapst }}) menunggak {{ nominal_tunggakan }}. Sgr bayar via M-Banking/E-Wallet/alfa/indomart. Info Petugas: 082114251634
