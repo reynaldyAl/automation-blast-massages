@@ -280,63 +280,7 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
                 result.wa_error or result.sms_error,
             )
 
-    # ── Retry Mode ────────────────────────────────────────────────────────────
-    failed_indices = reporter.get_failed_for_retry()
-    if config.RETRY_FAILED and failed_indices and not dry_run:
-        print_section(f"🔁 Retry — {len(failed_indices)} pesan gagal")
-        retry_list = [p for p in peserta_list if p.row_index in failed_indices]
 
-        for attempt in range(1, config.MAX_RETRY + 1):
-            console.print(f"  [yellow]Percobaan retry ke-{attempt}...[/yellow]")
-            still_failing = []
-
-            for peserta in retry_list:
-                _engine = _get_engine(tpl_file, peserta)
-                message_wa = _engine.render(
-                    nama_peserta=peserta.nama_peserta,
-                    nokapst=peserta.nokapst,
-                    nominal_tunggakan=peserta.nominal_tunggakan,
-                )
-                message_sms = _engine.render(
-                    nama_peserta=peserta.nama_peserta,
-                    nokapst=peserta.nokapst,
-                    nominal_tunggakan=peserta.nominal_tunggakan,
-                    strip_markdown=True,
-                )
-                retry_result = SendResult(
-                    row_index       = peserta.row_index,
-                    nomor           = peserta.nomor,
-                    nama_peserta    = peserta.nama_peserta,
-                    nokapst         = peserta.nokapst,
-                    nohp_original   = peserta.nohp_original,
-                    nohp_normalized = peserta.phone.normalized,
-                    phone_valid     = peserta.phone.is_valid,
-                    retry_count     = attempt,
-                )
-
-                if send_wa and peserta.send_wa:
-                    wa_status, wa_err, wa_ss = wa.send(peserta.phone.wa_format, message_wa)
-                    retry_result.wa_status    = wa_status
-                    retry_result.wa_error     = wa_err
-                    retry_result.wa_screenshot = wa_ss
-
-                if send_sms and peserta.send_sms:
-                    sms_status, sms_err = sms.send(peserta.phone.display_format, message_sms)
-                    retry_result.sms_status = sms_status
-                    retry_result.sms_error  = sms_err
-
-                reporter.record(retry_result)
-                print_send_result(
-                    peserta.nama_peserta, peserta.phone.display_format,
-                    retry_result.wa_status, retry_result.sms_status,
-                )
-
-                if retry_result.wa_status == Status.FAILED or retry_result.sms_status == Status.FAILED:
-                    still_failing.append(peserta)
-
-            retry_list = still_failing
-            if not still_failing:
-                break
 
     # ── Cleanup ───────────────────────────────────────────────────────────────
     if wa:
@@ -346,6 +290,57 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
     # ── Summary ───────────────────────────────────────────────────────────────
     summary = reporter.get_summary()
     print_summary(summary, dry_run=dry_run)
+
+    # Tampilkan daftar data yang gagal dan simpan log khusus
+    failed_indices = reporter.get_failed_for_retry()
+    if failed_indices and not dry_run:
+        import datetime
+        
+        failed_peserta = [p for p in peserta_list if p.row_index in failed_indices]
+        console.print(f"\n  [bold red]⚠ Perhatian:[/bold red] Berikut adalah {len(failed_peserta)} data yang gagal terkirim:")
+        for p in failed_peserta:
+            console.print(f"  - [red]{p.nama_peserta}[/red] ({p.phone.display_format})")
+        
+        # Buat folder failed jika belum ada
+        failed_dir = config.REPORT_DIR / "failed"
+        failed_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Tulis ke file CSV
+        import csv
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        failed_csv_path = failed_dir / f"report_failed_{timestamp}.csv"
+        
+        try:
+            rows_to_write = []
+            fieldnames = set()
+            for p in failed_peserta:
+                row_data = {
+                    "nomor": p.nomor if p.nomor is not None else "",
+                    "nama_peserta": p.nama_peserta,
+                    "nokapst": p.nokapst,
+                    "nohp": p.nohp_original,
+                    "nominal_tunggakan": p.nominal_tunggakan if p.nominal_tunggakan is not None else "",
+                    "send_wa": str(p.send_wa).upper(),
+                    "send_sms": str(p.send_sms).upper()
+                }
+                row_data.update(p.extra_data)
+                for k in row_data.keys():
+                    fieldnames.add(k)
+                rows_to_write.append(row_data)
+                
+            base_fields = ["nomor", "nama_peserta", "nokapst", "nohp", "nominal_tunggakan", "send_wa", "send_sms"]
+            extra_fields = sorted(list(fieldnames - set(base_fields)))
+            final_fields = base_fields + extra_fields
+            
+            with open(failed_csv_path, "w", encoding="utf-8", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=final_fields)
+                writer.writeheader()
+                writer.writerows(rows_to_write)
+                
+            console.print(f"  [dim]Data-data ini telah dimasukkan ke dalam log/reports dengan status FAILED.[/dim]")
+            console.print(f"  [dim]Laporan CSV khusus data gagal disimpan di: {failed_csv_path}[/dim]")
+        except Exception as e:
+            console.print(f"  [yellow]Gagal menyimpan CSV failed khusus: {e}[/yellow]")
 
 
 # ─── preview command ──────────────────────────────────────────────────────────
@@ -896,8 +891,30 @@ def connect_wireless():
     
     console.print("  [cyan]Pastikan:[/cyan]")
     console.print("  1. HP dan Komputer terhubung di jaringan Wi-Fi/Hotspot yang sama.")
-    console.print("  2. 'Proses Debug Nirkabel' (Wireless Debugging) sudah diaktifkan di Opsi Pengembang HP Anda.")
-    console.print("  3. Anda sudah melihat Alamat IP & Port dari layar HP Anda.\n")
+    console.print("  2. 'Proses Debug Nirkabel' (Wireless Debugging) sudah aktif di Opsi Pengembang.")
+    console.print("  3. Jika ini pertama kali, pilih 'Pair device with pairing code' di HP Anda.\n")
+    
+    is_pairing = Prompt.ask("  Apakah Anda butuh PAIRING perangkat baru? (Pilih 'y' jika ini pertama kali dihubungkan)", choices=["y", "n"], default="n").strip().lower()
+    
+    if is_pairing == "y":
+        console.print("\n  [cyan]-- Proses Pairing (Android 11+) --[/cyan]")
+        console.print("  Lihat layar HP Anda pada menu 'Pair device with pairing code'")
+        pair_address = Prompt.ask("  Masukkan Alamat IP dan Port Pairing (contoh: 192.168.1.5:41234)").strip()
+        pair_code = Prompt.ask("  Masukkan 6-digit Wi-Fi pairing code").strip()
+        
+        if pair_address and pair_code:
+            console.print(f"  [dim]Pairing ke {pair_address}...[/dim]")
+            pair_res = subprocess.run(["adb", "pair", pair_address, pair_code], capture_output=True, text=True)
+            if "Successfully paired" in pair_res.stdout or "already paired" in pair_res.stdout.lower():
+                console.print(f"  [bold green]✓ Pairing Berhasil![/bold green] ({pair_res.stdout.strip()})")
+            else:
+                console.print(f"  [bold red]✖ Pairing Gagal:[/bold red] {pair_res.stdout.strip()}")
+                console.print("  [dim]Silakan coba lagi. Pastikan port pairing benar (biasanya berbeda dengan port connect).[/dim]\n")
+                return
+        console.print()
+
+    console.print("  [cyan]-- Proses Koneksi --[/cyan]")
+    console.print("  Lihat Alamat IP & Port utama di halaman depan 'Wireless Debugging'")
     
     address = Prompt.ask("  Masukkan Alamat IP dan Port (contoh: [bold]192.168.1.5:5555[/bold])").strip()
     
