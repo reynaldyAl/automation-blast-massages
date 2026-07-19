@@ -179,6 +179,7 @@ class Reporter:
             "sms_success": sum(1 for r in sms_results if r.sms_status == Status.SUCCESS),
             "sms_failed": sum(1 for r in sms_results if r.sms_status == Status.FAILED),
             "sms_no_device": sum(1 for r in sms_results if r.sms_status == Status.NO_DEVICE),
+            "sms_invalid": sum(1 for r in sms_results if r.sms_status == Status.INVALID_PHONE),
             "invalid_phone": sum(1 for r in self._results if not r.phone_valid),
             "report_path": str(self.report_path),
             "log_path": str(_log_file),
