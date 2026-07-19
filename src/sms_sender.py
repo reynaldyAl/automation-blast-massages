@@ -310,10 +310,52 @@ class SMSSender:
                             self._cached_send_coords = coords
                             self._adb("shell", "input", "tap", str(coords[0]), str(coords[1]))
 
-            # Tunggu sebentar setelah send
-            time.sleep(1.0)
+            # ── Verifikasi Status Pengiriman (Closed-Loop Polling) ──
+            # Ambil maksimal 8 digit terakhir agar cocok dengan berbagai format di DB (08xx vs +62xx)
+            nomor_akhir = phone_display[-8:] if len(phone_display) >= 8 else phone_display
+            
+            max_wait = 12.0
+            poll_interval = 1.5
+            elapsed = 0.0
+            
+            while elapsed < max_wait:
+                time.sleep(poll_interval)
+                elapsed += poll_interval
+                
+                try:
+                    query_res = self._adb(
+                        "shell", "content", "query",
+                        "--uri", "content://sms",
+                        "--projection", "type",
+                        "--where", f"address LIKE '%{nomor_akhir}'",
+                        "--sort", "date DESC",
+                        timeout=5
+                    )
+                    
+                    if query_res.returncode == 0:
+                        out_text = query_res.stdout.strip()
+                        if not out_text or "No result found" in out_text:
+                            # Pesan belum terekam di database, lanjut menunggu
+                            continue
+                        
+                        if "type=2" in out_text:
+                            # type=2 (Sent/Terkirim)
+                            return Status.SUCCESS, ""
+                        elif "type=5" in out_text:
+                            # type=5 (Failed/Gagal)
+                            return Status.FAILED, "Gagal terkirim (Masuk kotak Failed). Cek sinyal/pulsa."
+                        elif "type=4" in out_text or "type=6" in out_text:
+                            # type=4 (Outbox) / type=6 (Queued) -> Masih proses mengirim, tunggu lagi
+                            continue
+                        else:
+                            # Selain itu (misal type=3 Draft), berarti tidak sedang dikirim
+                            return Status.FAILED, "Gagal terkirim (Hanya tersimpan sebagai Draft)"
+                except Exception:
+                    # Gagal eksekusi query (misal adb putus sementara), abaikan dan coba lagi di iterasi berikutnya
+                    pass
 
-            return Status.SUCCESS, ""
+            # Timeout setelah 12 detik
+            return Status.FAILED, "Waktu habis (12 detik). Pesan tidak terkirim atau gagal divalidasi."
 
         except subprocess.TimeoutExpired:
             return Status.FAILED, "ADB command timeout"
