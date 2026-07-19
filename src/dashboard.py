@@ -220,7 +220,7 @@ def print_summary(summary: dict, dry_run: bool = False):
         str(summary["sms_success"]),
         str(summary["sms_failed"]),
         str(summary.get("sms_no_device", 0)),
-        str(summary["wa_invalid"]),
+        str(summary.get("sms_invalid", 0)),
     )
 
     console.print(Panel(wa_table, title="[bold]Ringkasan Pengiriman[/bold]", border_style="green"))
