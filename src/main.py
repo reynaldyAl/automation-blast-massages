@@ -45,16 +45,31 @@ from scheduler import start_scheduler
 
 
 # ─── Helper: pilih template engine berdasarkan ada/tidaknya nominal ────────────
-def _get_engine(tpl_file: Path, peserta: "Peserta") -> TemplateEngine:
+def _get_engine(tpl_file: Path, peserta: "Peserta", is_sms: bool = False) -> TemplateEngine:
     """
     Pilih template engine sesuai kondisi peserta:
-    - Ada nominal_tunggakan → pakai bpjs_message_nominal.txt (di folder yang sama)
+    - Jika SMS (is_sms=True):
+      - Coba cari bpjs_message_nominal_sms.txt (jika ada nominal) atau bpjs_message_sms.txt
+      - Fallback ke template WA jika template khusus SMS tidak ditemukan
+    - Jika WA (is_sms=False):
+      - Ada nominal_tunggakan → pakai bpjs_message_nominal.txt
     - Tidak ada / kolom tidak ada → pakai template default
     """
+    if is_sms:
+        if peserta.nominal_tunggakan:
+            sms_nominal_tpl = tpl_file.parent / "bpjs_message_nominal_sms.txt"
+            if sms_nominal_tpl.exists():
+                return TemplateEngine(sms_nominal_tpl)
+        sms_tpl = tpl_file.parent / "bpjs_message_sms.txt"
+        if sms_tpl.exists():
+            return TemplateEngine(sms_tpl)
+
+    # Fallback to WA logic
     if peserta.nominal_tunggakan:
         nominal_tpl = tpl_file.parent / "bpjs_message_nominal.txt"
         if nominal_tpl.exists():
             return TemplateEngine(nominal_tpl)
+            
     return TemplateEngine(tpl_file)
 
 
@@ -222,13 +237,15 @@ def _do_run(dry_run=False, wa_only=False, sms_only=False, fresh=False,
                 continue
 
             # Render pesan — pilih template otomatis berdasarkan ada/tidaknya nominal
-            _engine = _get_engine(tpl_file, peserta)
-            message_wa = _engine.render(
+            _engine_wa = _get_engine(tpl_file, peserta, is_sms=False)
+            message_wa = _engine_wa.render(
                 nama_peserta=peserta.nama_peserta,
                 nokapst=peserta.nokapst,
                 nominal_tunggakan=peserta.nominal_tunggakan,
             )
-            message_sms = _engine.render(
+            
+            _engine_sms = _get_engine(tpl_file, peserta, is_sms=True)
+            message_sms = _engine_sms.render(
                 nama_peserta=peserta.nama_peserta,
                 nokapst=peserta.nokapst,
                 nominal_tunggakan=peserta.nominal_tunggakan,
@@ -810,11 +827,13 @@ def generate(tpl_path, csv_path, out_path, channel):
             batch_peserta = [p for p in peserta_list if r_start <= (p.row_index + 1) <= r_end]
             
             for peserta in batch_peserta:
-                _engine = _get_engine(tpl_file, peserta)
+                _engine_wa = _get_engine(tpl_file, peserta, is_sms=False)
+                _engine_sms = _get_engine(tpl_file, peserta, is_sms=True)
                 
                 # Fungsi helper untuk merender pesan
                 def render_msg(is_sms_format: bool):
-                    return _engine.render(
+                    eng = _engine_sms if is_sms_format else _engine_wa
+                    return eng.render(
                         nama_peserta=peserta.nama_peserta,
                         nokapst=peserta.nokapst,
                         nominal_tunggakan=peserta.nominal_tunggakan,
