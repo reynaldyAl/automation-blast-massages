@@ -50,7 +50,20 @@ def load_csv(csv_path: Path) -> CSVLoadResult:
 
     # --- Baca file ---
     try:
-        df = pd.read_csv(csv_path, dtype=str, sep=None, engine='python')
+        # keep_default_na=False membuat cell kosong menjadi string kosong "" (bukan NaN)
+        df = pd.read_csv(csv_path, dtype=str, sep=None, engine='python', keep_default_na=False)
+        
+        # Bersihkan spasi kosong di seluruh DataFrame agar baris yang hanya berisi spasi benar-benar kosong
+        # Gunakan .map() untuk Pandas versi baru (>=2.1.0), gunakan try-except untuk kompatibilitas
+        try:
+            df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
+        except AttributeError:
+            # Fallback untuk Pandas versi lama
+            df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+        
+        # Buang baris yang benar-benar kosong (semua kolomnya "")
+        df = df.replace("", float("NaN")).dropna(how="all").fillna("")
+        
     except FileNotFoundError:
         result.errors.append(f"File CSV tidak ditemukan: {csv_path}")
         return result
