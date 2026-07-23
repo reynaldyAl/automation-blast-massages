@@ -334,22 +334,32 @@ class SMSSender:
                     
                     if query_res.returncode == 0:
                         out_text = query_res.stdout.strip()
-                        if not out_text or "No result found" in out_text:
+                        lines = out_text.splitlines()
+                        
+                        if not lines or "No result found" in lines[0]:
                             # Pesan belum terekam di database, lanjut menunggu
                             continue
                         
-                        if "type=2" in out_text:
+                        # Hanya periksa baris pertama (pesan paling baru)
+                        first_row = lines[0]
+                        
+                        if "type=2" in first_row:
                             # type=2 (Sent/Terkirim)
                             return Status.SUCCESS, ""
-                        elif "type=5" in out_text:
+                        elif "type=5" in first_row:
                             # type=5 (Failed/Gagal)
                             return Status.FAILED, "Gagal terkirim (Masuk kotak Failed). Cek sinyal/pulsa."
-                        elif "type=4" in out_text or "type=6" in out_text:
+                        elif "type=4" in first_row or "type=6" in first_row:
                             # type=4 (Outbox) / type=6 (Queued) -> Masih proses mengirim, tunggu lagi
                             continue
+                        elif "type=3" in first_row or "type=1" in first_row:
+                            # type=3 (Draft) -> Tombol send mungkin belum terproses sempurna oleh HP
+                            # type=1 (Inbox) -> Pesan balasan masuk di saat yang sama
+                            # Tetap tunggu sampai berubah jadi type 2/4/5/6
+                            continue
                         else:
-                            # Selain itu (misal type=3 Draft), berarti tidak sedang dikirim
-                            return Status.FAILED, "Gagal terkirim (Hanya tersimpan sebagai Draft)"
+                            # Tipe lain yang tidak diketahui
+                            continue
                 except Exception:
                     # Gagal eksekusi query (misal adb putus sementara), abaikan dan coba lagi di iterasi berikutnya
                     pass
